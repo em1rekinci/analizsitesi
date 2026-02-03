@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .header-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      padding: 0 10px;
+    }
+    
+    .header-bar h1 {
+      margin: 0;
+    }
+    
+    .user-menu {
+      position: relative;
+    }
+    
+    .user-button {
+      background: #0f172a;
+      border: 1px solid #334155;
+      color: #e5e7eb;
+      padding: 10px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+    }
+    
+    .user-button:hover {
+      background: #1e293b;
+      border-color: #38bdf8;
+    }
+    
+    .premium-badge {
+      background: #facc15;
+      color: #000;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: bold;
+    }
+    
+    .dropdown-menu {
+      display: none;
+      position: absolute;
+      right: 0;
+      top: 100%;
+      margin-top: 8px;
+      background: #020617;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      min-width: 200px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+      z-index: 1000;
+    }
+    
+    .dropdown-menu.show {
+      display: block;
+    }
+    
+    .dropdown-item {
+      padding: 12px 16px;
+      color: #e5e7eb;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid #1e293b;
+    }
+    
+    .dropdown-item:last-child {
+      border-bottom: none;
+    }
+    
+    .dropdown-item:hover {
+      background: #1e293b;
+    }
+    
+    .login-button {
+      background: #38bdf8;
+      color: #000;
+      padding: 10px 20px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: bold;
+      display: inline-block;
+    }
+    
+    .login-button:hover {
+      background: #7dd3fc;
+    }
+  </style>
+</head>
+<body>
+
+<div class="header-bar">
+  <h1>📅 Bugünün Maçları</h1>
+  
+  <div class="user-menu">
+    {% if user %}
+      <button class="user-button" onclick="toggleMenu()">
+        <span>{{ user.email.split('@')[0] }}</span>
+        {% if user.is_premium %}
+          <span class="premium-badge">⭐ PRO</span>
+        {% endif %}
+        <span>▼</span>
+      </button>
+      
+      <div class="dropdown-menu" id="userDropdown">
+        <a href="/account" class="dropdown-item">
+          <span>👤</span>
+          <span>Hesabım</span>
+        </a>
+        {% if user.is_premium %}
+        <a href="/account" class="dropdown-item">
+          <span>⭐</span>
+          <span>Premium Bilgileri</span>
+        </a>
+        {% else %}
+        <a href="/register" class="dropdown-item">
+          <span>🔓</span>
+          <span>Premium Ol</span>
+        </a>
+        {% endif %}
+        <a href="/logout" class="dropdown-item" style="color: #f87171;">
+          <span>🚪</span>
+          <span>Çıkış Yap</span>
+        </a>
+      </div>
+    {% else %}
+      <a href="/login" class="login-button">Giriş Yap</a>
+    {% endif %}
+  </div>
+</div>
+
+{% for league, league_matches in matches.items() %}
+<div class="league-card">
+  <h2>{{ league }}</h2>
+
+  <div class="table header">
+    <div class="cell match">Maç</div>
+    <div class="cell">MS1</div>
+    <div class="cell">MS0</div>
+    <div class="cell">MS2</div>
+    <div class="cell">O2.5</div>
+    <div class="cell">KG</div>
+    <div class="cell">İY 1.5</div>
+  </div>
+
+  {% for match in league_matches %}
+  <div class="match-row {% if not match.is_free and not is_premium %}locked{% endif %}">
+
+    <div class="cell match">
+      {{ match.homeTeam.name }} - {{ match.awayTeam.name }}
+      <span class="time">{{ match.time }}</span>
+    </div>
+
+    {% for key in ["MS1","MS0","MS2","O25","KG","FH15"] %}
+    <div class="cell {% if not match.is_free and not is_premium %}blur{% endif %}">
+      {{ match.markets[key] }}%
+      {% if match.markets.best == key and match.markets.best_value >= 60 %}
+        <span class="star">⭐</span>
+      {% endif %}
+    </div>
+    {% endfor %}
+
+    {% if not match.is_free and not is_premium %}
+    <div class="premium-overlay">
+      <a href="/register" class="premium-btn">🔒 Premium</a>
+    </div>
+    {% endif %}
+
+  </div>
+  {% endfor %}
+</div>
+{% endfor %}
+
+{% if picks %}
+<div class="picks">
+  <h2>🔥 Günün Oynanabilir Tercihleri</h2>
+  <ul>
+    {% for p in picks %}
+    <li>
+      <strong>{{ p.match }}</strong> → {{ p.market }} (%{{ p.value }})
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<script>
+function toggleMenu() {
+  const dropdown = document.getElementById('userDropdown');
+  dropdown.classList.toggle('show');
+}
+
+// Dışarı tıklanınca menüyü kapat
+document.addEventListener('click', function(event) {
+  const userMenu = document.querySelector('.user-menu');
+  if (!userMenu.contains(event.target)) {
+    document.getElementById('userDropdown')?.classList.remove('show');
+  }
+});
+
+// Viewport meta tag kontrolü - yoksa ekle (mobile için)
+if (!document.querySelector('meta[name="viewport"]')) {
+  const meta = document.createElement('meta');
+  meta.name = 'viewport';
+  meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=5.0';
+  document.head.appendChild(meta);
+}
+</script>
+
+</body>
+</html>

@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Giriş Yap</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .login-card {
+      background: #020617;
+      padding: 30px;
+      border-radius: 14px;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: 0 10px 40px rgba(0,0,0,.6);
+    }
+    
+    .login-card h2 {
+      color: #38bdf8;
+      text-align: center;
+      margin-bottom: 24px;
+    }
+    
+    .form-group {
+      margin-bottom: 18px;
+    }
+    
+    .form-group label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 14px;
+      color: #94a3b8;
+    }
+    
+    .form-group input {
+      width: 100%;
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid #334155;
+      background: #0f172a;
+      color: #e5e7eb;
+      font-size: 15px;
+    }
+    
+    .form-group input:focus {
+      outline: none;
+      border-color: #38bdf8;
+    }
+    
+    .error-message {
+      background: #7f1d1d;
+      color: #fca5a5;
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      font-size: 14px;
+    }
+    
+    .submit-btn {
+      width: 100%;
+      padding: 14px;
+      background: #38bdf8;
+      color: #000;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    
+    .submit-btn:hover {
+      background: #7dd3fc;
+    }
+    
+    .register-link {
+      text-align: center;
+      margin-top: 16px;
+      font-size: 14px;
+      color: #94a3b8;
+    }
+    
+    .register-link a {
+      color: #facc15;
+      text-decoration: none;
+      font-weight: bold;
+    }
+    
+    .register-link a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body class="centered">
+
+<div class="login-card">
+  <h2>🔐 Giriş Yap</h2>
+
+  {% if error %}
+  <div class="error-message">
+    {{ error }}
+  </div>
+  {% endif %}
+
+  <form method="POST" action="/login">
+    <div class="form-group">
+      <label for="email">E-posta Adresi</label>
+      <input 
+        type="email" 
+        id="email" 
+        name="email" 
+        placeholder="ornek@email.com"
+        required
+        autocomplete="email"
+      >
+    </div>
+
+    <div class="form-group">
+      <label for="password">Şifre</label>
+      <input 
+        type="password" 
+        id="password" 
+        name="password" 
+        placeholder="••••••••"
+        required
+        autocomplete="current-password"
+      >
+    </div>
+
+    <button type="submit" class="submit-btn">
+      Giriş Yap
+    </button>
+  </form>
+
+  <div class="register-link">
+    Henüz üye değil misiniz? <a href="/register">Premium Üye Olun</a>
+  </div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,32 @@
+{
+  "date": "2026-01-21",
+  "matches": [
+    {
+      "league": "Championship",
+      "match": "Leeds vs Norwich",
+      "market": "O2.5",
+      "model_prob": 0.62,
+      "odds": 1.95,
+      "edge": 0.21,
+      "confidence": "High"
+    },
+    {
+      "league": "Championship",
+      "match": "Hull vs Preston",
+      "market": "BTTS",
+      "model_prob": 0.58,
+      "odds": 1.88,
+      "edge": 0.14,
+      "confidence": "Medium"
+    },
+    {
+      "league": "Premier League",
+      "match": "Arsenal vs Wolves",
+      "market": "MS1",
+      "model_prob": 0.71,
+      "odds": 1.60,
+      "edge": 0.12,
+      "confidence": "High"
+    }
+  ]
+}

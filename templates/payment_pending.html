@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ödeme Beklemede</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .pending-container {
+      max-width: 600px;
+      margin: 80px auto;
+      padding: 0 20px;
+    }
+    
+    .pending-card {
+      background: #020617;
+      padding: 40px;
+      border-radius: 14px;
+      text-align: center;
+      box-shadow: 0 10px 40px rgba(0,0,0,.6);
+    }
+    
+    .pending-icon {
+      font-size: 80px;
+      margin-bottom: 20px;
+      animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    
+    .pending-card h2 {
+      color: #facc15;
+      margin-bottom: 10px;
+    }
+    
+    .status-box {
+      background: #0f172a;
+      border: 2px solid #334155;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 30px 0;
+      text-align: left;
+    }
+    
+    .status-item {
+      display: flex;
+      align-items: center;
+      padding: 10px 0;
+      gap: 12px;
+    }
+    
+    .status-icon {
+      font-size: 24px;
+    }
+    
+    .home-button {
+      display: inline-block;
+      padding: 14px 30px;
+      background: #38bdf8;
+      color: #000;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: bold;
+      margin-top: 20px;
+    }
+    
+    .home-button:hover {
+      background: #7dd3fc;
+    }
+    
+    .info-text {
+      color: #94a3b8;
+      font-size: 14px;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body class="centered">
+
+<div class="pending-container">
+  <div class="pending-card">
+    <div class="pending-icon">⏳</div>
+    <h2>Ödemeniz Alındı!</h2>
+    <p style="opacity: 0.8;">Dekontunuz başarıyla gönderildi.</p>
+    
+    <div class="status-box">
+      <div class="status-item">
+        <span class="status-icon">✅</span>
+        <div>
+          <strong style="color: #22c55e;">Dekont Yüklendi</strong>
+          <div style="font-size: 13px; color: #94a3b8;">
+            {{ upload_time }}
+          </div>
+        </div>
+      </div>
+      
+      <div class="status-item">
+        <span class="status-icon">⏳</span>
+        <div>
+          <strong style="color: #facc15;">İnceleniyor</strong>
+          <div style="font-size: 13px; color: #94a3b8;">
+            Ödemeniz yönetici tarafından kontrol ediliyor
+          </div>
+        </div>
+      </div>
+      
+      <div class="status-item">
+        <span class="status-icon">⭐</span>
+        <div>
+          <strong style="color: #94a3b8;">Premium Aktif Olacak</strong>
+          <div style="font-size: 13px; color: #94a3b8;">
+            Onaylandıktan sonra otomatik aktif
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div style="background: #14532d; padding: 16px; border-radius: 8px; margin: 20px 0;">
+      <p style="color: #86efac; margin: 0;">
+        <strong>📧 E-posta ile bilgilendirileceksiniz</strong><br>
+        <span style="font-size: 13px; opacity: 0.8;">
+          Ödemeniz onaylandığında {{ user_email }} adresinize bilgi gönderilecek.
+        </span>
+      </p>
+    </div>
+    
+    <a href="/dashboard" class="home-button">
+      🏠 Ana Sayfaya Dön
+    </a>
+    
+    <p class="info-text">
+      Ortalama onay süresi: <strong>1-24 saat</strong><br>
+      Referans Kodu: <strong style="color: #facc15;">{{ payment_ref }}</strong>
+    </p>
+  </div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ödeme - Havale/EFT</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .payment-container {
+      max-width: 700px;
+      margin: 40px auto;
+      padding: 0 20px;
+    }
+    
+    .payment-card {
+      background: #020617;
+      padding: 30px;
+      border-radius: 14px;
+      margin-bottom: 20px;
+      box-shadow: 0 10px 40px rgba(0,0,0,.6);
+    }
+    
+    .payment-card h2 {
+      color: #38bdf8;
+      text-align: center;
+      margin-bottom: 10px;
+    }
+    
+    .step-indicator {
+      display: flex;
+      justify-content: space-between;
+      margin: 30px 0;
+      padding: 0 20px;
+    }
+    
+    .step {
+      text-align: center;
+      flex: 1;
+      position: relative;
+    }
+    
+    .step::after {
+      content: '';
+      position: absolute;
+      top: 15px;
+      left: 50%;
+      width: 100%;
+      height: 2px;
+      background: #334155;
+      z-index: -1;
+    }
+    
+    .step:last-child::after {
+      display: none;
+    }
+    
+    .step-number {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background: #334155;
+      color: #e5e7eb;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 8px;
+      font-weight: bold;
+    }
+    
+    .step.active .step-number {
+      background: #22c55e;
+      color: #000;
+    }
+    
+    .step-label {
+      font-size: 12px;
+      color: #94a3b8;
+    }
+    
+    .bank-info {
+      background: #0f172a;
+      border: 2px solid #334155;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 20px 0;
+    }
+    
+    .bank-logo {
+      font-size: 32px;
+      text-align: center;
+      margin-bottom: 10px;
+    }
+    
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 12px 0;
+      border-bottom: 1px solid #1e293b;
+    }
+    
+    .info-row:last-child {
+      border-bottom: none;
+    }
+    
+    .info-label {
+      color: #94a3b8;
+      font-size: 14px;
+    }
+    
+    .info-value {
+      color: #e5e7eb;
+      font-weight: 500;
+      text-align: right;
+    }
+    
+    .copy-button {
+      background: #334155;
+      color: #e5e7eb;
+      border: none;
+      padding: 4px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      margin-left: 8px;
+    }
+    
+    .copy-button:hover {
+      background: #475569;
+    }
+    
+    .warning-box {
+      background: #7f1d1d;
+      border: 1px solid #991b1b;
+      border-radius: 8px;
+      padding: 16px;
+      margin: 20px 0;
+      color: #fca5a5;
+      font-size: 14px;
+    }
+    
+    .success-box {
+      background: #14532d;
+      border: 1px solid #166534;
+      border-radius: 8px;
+      padding: 16px;
+      margin: 20px 0;
+      color: #86efac;
+      font-size: 14px;
+    }
+    
+    .upload-section {
+      margin: 30px 0;
+    }
+    
+    .file-input-wrapper {
+      position: relative;
+      overflow: hidden;
+      display: inline-block;
+      width: 100%;
+    }
+    
+    .file-input-wrapper input[type=file] {
+      font-size: 100px;
+      position: absolute;
+      left: 0;
+      top: 0;
+      opacity: 0;
+      cursor: pointer;
+    }
+    
+    .file-input-label {
+      display: block;
+      padding: 14px;
+      background: #0f172a;
+      border: 2px dashed #334155;
+      border-radius: 8px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .file-input-label:hover {
+      border-color: #38bdf8;
+      background: #1e293b;
+    }
+    
+    .file-preview {
+      margin-top: 10px;
+      padding: 10px;
+      background: #0f172a;
+      border-radius: 6px;
+      font-size: 14px;
+      color: #22c55e;
+    }
+    
+    .form-group {
+      margin-bottom: 18px;
+    }
+    
+    .form-group label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 14px;
+      color: #94a3b8;
+    }
+    
+    .form-group input,
+    .form-group textarea {
+      width: 100%;
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid #334155;
+      background: #0f172a;
+      color: #e5e7eb;
+      font-size: 15px;
+    }
+    
+    .form-group textarea {
+      resize: vertical;
+      min-height: 80px;
+    }
+    
+    .submit-button {
+      width: 100%;
+      padding: 16px;
+      background: #22c55e;
+      color: #000;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    
+    .submit-button:hover {
+      background: #4ade80;
+    }
+    
+    .submit-button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  </style>
+</head>
+<body>
+
+<div class="payment-container">
+  
+  <div class="payment-card">
+    <h2>💳 Premium Ödeme - Havale/EFT</h2>
+    <p style="text-align: center; opacity: 0.8; margin-bottom: 10px;">
+      Hesap: {{ user_email }}
+    </p>
+    
+    <div class="step-indicator">
+      <div class="step active">
+        <div class="step-number">1</div>
+        <div class="step-label">Havale Yap</div>
+      </div>
+      <div class="step">
+        <div class="step-number">2</div>
+        <div class="step-label">Dekont Yükle</div>
+      </div>
+      <div class="step">
+        <div class="step-number">3</div>
+        <div class="step-label">Onay Bekle</div>
+      </div>
+    </div>
+  </div>
+  
+  <div class="payment-card">
+    <h3 style="color: #facc15; margin-top: 0;">📋 Havale Bilgileri</h3>
+    
+    <div class="bank-info">
+      <div class="bank-logo">🏦</div>
+      
+      <div class="info-row">
+        <span class="info-label">Banka</span>
+        <span class="info-value">AKBANK</span>
+      </div>
+      
+      <div class="info-row">
+        <span class="info-label">Hesap Sahibi</span>
+        <span class="info-value">EMİR EKİNCİ</span>
+      </div>
+      
+      <div class="info-row">
+        <span class="info-label">IBAN</span>
+        <span class="info-value">
+          TR05 0004 6000 5588 8000 3013 95
+          <button class="copy-button" onclick="copyToClipboard('TR05 0004 6000 5588 8000 3013 95')">
+            📋 Kopyala
+          </button>
+        </span>
+      </div>
+      
+      <div class="info-row">
+        <span class="info-label">Tutar</span>
+        <span class="info-value" style="color: #facc15; font-size: 20px; font-weight: bold;">
+          299 ₺
+        </span>
+      </div>
+      
+      <div class="info-row">
+        <span class="info-label">Açıklama</span>
+        <span class="info-value">
+          {{ payment_ref }}
+          <button class="copy-button" onclick="copyToClipboard('{{ payment_ref }}')">
+            📋 Kopyala
+          </button>
+        </span>
+      </div>
+    </div>
+    
+    <div class="warning-box">
+      ⚠️ <strong>ÖNEMLİ:</strong> Havale açıklamasına mutlaka <strong>{{ payment_ref }}</strong> kodunu yazın! 
+      Bu kod olmadan ödemeniz eşleştirilemez.
+    </div>
+  </div>
+  
+  <div class="payment-card">
+    <h3 style="color: #22c55e; margin-top: 0;">📤 Havale Dekontunu Yükle</h3>
+    
+    <form method="POST" action="/submit-payment" enctype="multipart/form-data" id="paymentForm">
+      <input type="hidden" name="payment_ref" value="{{ payment_ref }}">
+      
+      <div class="upload-section">
+        <div class="file-input-wrapper">
+          <label class="file-input-label" for="receipt">
+            📁 Havale Dekontunu Seç
+            <div style="font-size: 12px; opacity: 0.7; margin-top: 8px;">
+              (JPG, PNG veya PDF - Max 5MB)
+            </div>
+          </label>
+          <input type="file" id="receipt" name="receipt" accept="image/*,application/pdf" required onchange="showFileName(this)">
+        </div>
+        <div id="filePreview" class="file-preview" style="display: none;"></div>
+      </div>
+      
+      <div class="form-group">
+        <label for="sender_name">Gönderen Adı (Bankadaki İsim)</label>
+        <input type="text" id="sender_name" name="sender_name" placeholder="Ahmet Yılmaz" required>
+      </div>
+      
+      <div class="form-group">
+        <label for="amount">Gönderilen Tutar (₺)</label>
+        <input type="number" id="amount" name="amount" value="299" readonly>
+      </div>
+      
+      <div class="form-group">
+        <label for="notes">Notlar (Opsiyonel)</label>
+        <textarea id="notes" name="notes" placeholder="Varsa eklemek istediğiniz notlar..."></textarea>
+      </div>
+      
+      <div class="success-box">
+        ✓ Dekont yüklendikten sonra ödemeniz <strong>1-24 saat</strong> içinde kontrol edilecek ve 
+        premium hesabınız otomatik olarak aktif edilecektir.
+      </div>
+      
+      <button type="submit" class="submit-button" id="submitBtn">
+        ✓ Dekont Gönder ve Onay Bekle
+      </button>
+    </form>
+  </div>
+  
+  <div style="text-align: center; margin-top: 20px;">
+    <a href="/dashboard" style="color: #38bdf8; text-decoration: none;">
+      ← Dashboard'a Dön
+    </a>
+  </div>
+</div>
+
+<script>
+function copyToClipboard(text) {
+  navigator.clipboard.writeText(text).then(() => {
+    alert('📋 Kopyalandı: ' + text);
+  });
+}
+
+function showFileName(input) {
+  const preview = document.getElementById('filePreview');
+  if (input.files && input.files[0]) {
+    const fileName = input.files[0].name;
+    const fileSize = (input.files[0].size / 1024 / 1024).toFixed(2);
+    preview.innerHTML = `✓ Seçilen dosya: ${fileName} (${fileSize} MB)`;
+    preview.style.display = 'block';
+  } else {
+    preview.style.display = 'none';
+  }
+}
+
+document.getElementById('paymentForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  
+  const btn = document.getElementById('submitBtn');
+  const formData = new FormData(this);
+  
+  btn.disabled = true;
+  btn.textContent = '⏳ Gönderiliyor...';
+  
+  fetch('/submit-payment', {
+    method: 'POST',
+    body: formData
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.success) {
+      alert('✓ Dekont başarıyla gönderildi! Ödemeniz kontrol edildikten sonra premium hesabınız aktif olacak.');
+      window.location.href = '/payment-pending';
+    } else {
+      alert('❌ Hata: ' + data.error);
+      btn.disabled = false;
+      btn.textContent = '✓ Dekont Gönder ve Onay Bekle';
+    }
+  })
+  .catch(err => {
+    alert('❌ Bir hata oluştu: ' + err);
+    btn.disabled = false;
+    btn.textContent = '✓ Dekont Gönder ve Onay Bekle';
+  });
+});
+</script>
+
+</body>
+</html>

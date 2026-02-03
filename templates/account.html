@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hesabım</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .account-container {
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 0 20px;
+    }
+    
+    .back-link {
+      color: #38bdf8;
+      text-decoration: none;
+      margin-bottom: 20px;
+      display: inline-block;
+    }
+    
+    .back-link:hover {
+      text-decoration: underline;
+    }
+    
+    .account-card {
+      background: #020617;
+      border-radius: 12px;
+      padding: 30px;
+      margin-bottom: 20px;
+    }
+    
+    .account-card h2 {
+      color: #38bdf8;
+      margin-top: 0;
+      margin-bottom: 20px;
+    }
+    
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 14px 0;
+      border-bottom: 1px solid #1e293b;
+    }
+    
+    .info-row:last-child {
+      border-bottom: none;
+    }
+    
+    .info-label {
+      color: #94a3b8;
+      font-size: 14px;
+    }
+    
+    .info-value {
+      color: #e5e7eb;
+      font-weight: 500;
+    }
+    
+    .status-badge {
+      padding: 4px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: bold;
+    }
+    
+    .status-premium {
+      background: #22c55e;
+      color: #000;
+    }
+    
+    .status-free {
+      background: #64748b;
+      color: #fff;
+    }
+    
+    .warning-box {
+      background: #7f1d1d;
+      border: 1px solid #991b1b;
+      border-radius: 8px;
+      padding: 16px;
+      margin-top: 20px;
+      color: #fca5a5;
+    }
+    
+    .success-box {
+      background: #14532d;
+      border: 1px solid #166534;
+      border-radius: 8px;
+      padding: 16px;
+      margin-top: 20px;
+      color: #86efac;
+    }
+    
+    .action-button {
+      width: 100%;
+      padding: 14px;
+      background: #facc15;
+      color: #000;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      margin-top: 20px;
+      text-decoration: none;
+      display: inline-block;
+      text-align: center;
+    }
+    
+    .action-button:hover {
+      background: #fde047;
+    }
+    
+    .danger-button {
+      background: #dc2626;
+      color: #fff;
+    }
+    
+    .danger-button:hover {
+      background: #ef4444;
+    }
+  </style>
+</head>
+<body>
+
+<div class="account-container">
+  <a href="/dashboard" class="back-link">← Dashboard'a Dön</a>
+  
+  <div class="account-card">
+    <h2>👤 Hesap Bilgileri</h2>
+    
+    <div class="info-row">
+      <span class="info-label">E-posta</span>
+      <span class="info-value">{{ user.email }}</span>
+    </div>
+    
+    <div class="info-row">
+      <span class="info-label">Üyelik Durumu</span>
+      <span class="info-value">
+        {% if user.is_premium %}
+          <span class="status-badge status-premium">⭐ Premium Üye</span>
+        {% else %}
+          <span class="status-badge status-free">Ücretsiz Üye</span>
+        {% endif %}
+      </span>
+    </div>
+    
+    <div class="info-row">
+      <span class="info-label">Kayıt Tarihi</span>
+      <span class="info-value">{{ user.created_at[:10] }}</span>
+    </div>
+    
+    {% if user.last_login %}
+    <div class="info-row">
+      <span class="info-label">Son Giriş</span>
+      <span class="info-value">{{ user.last_login[:10] }}</span>
+    </div>
+    {% endif %}
+  </div>
+  
+  {% if user.is_premium %}
+  <div class="account-card">
+    <h2>⭐ Premium Üyelik</h2>
+    
+    <div class="info-row">
+      <span class="info-label">Premium Bitiş Tarihi</span>
+      <span class="info-value" style="color: #22c55e; font-weight: bold;">
+        {{ user.premium_until[:10] }}
+      </span>
+    </div>
+    
+    <div class="info-row">
+      <span class="info-label">Kalan Gün</span>
+      <span class="info-value">
+        {{ days_left }} gün
+      </span>
+    </div>
+    
+    {% if days_left < 7 %}
+    <div class="warning-box">
+      ⚠️ Premium üyeliğiniz yakında sona erecek! Kesintisiz erişim için yenileyin.
+    </div>
+    <a href="/renew-premium" class="action-button">
+      🔄 Premium'u Yenile (299₺)
+    </a>
+    {% else %}
+    <div class="success-box">
+      ✓ Premium üyeliğiniz aktif! Tüm özelliklere erişiminiz var.
+    </div>
+    {% endif %}
+  </div>
+  {% else %}
+  <div class="account-card">
+    <h2>🔓 Premium'a Geç</h2>
+    
+    <p style="opacity: 0.8; margin-bottom: 20px;">
+      Premium üyelikle tüm maçlara ve günlük profesyonel analizlere sınırsız erişim kazanın.
+    </p>
+    
+    <ul style="list-style: none; padding: 0; margin-bottom: 20px;">
+      <li style="padding: 8px 0; color: #22c55e;">✓ Tüm liglerin tüm maçları</li>
+      <li style="padding: 8px 0; color: #22c55e;">✓ Günlük en iyi bahis önerileri</li>
+      <li style="padding: 8px 0; color: #22c55e;">✓ Gelişmiş istatistik analizleri</li>
+      <li style="padding: 8px 0; color: #22c55e;">✓ 7/24 güncel maç verileri</li>
+    </ul>
+    
+    <a href="/register" class="action-button">
+      ⭐ Premium Üye Ol (299₺/ay)
+    </a>
+  </div>
+  {% endif %}
+  
+  <div class="account-card">
+    <h2>⚙️ Hesap İşlemleri</h2>
+    
+    <button onclick="if(confirm('Çıkış yapmak istediğinize emin misiniz?')) window.location.href='/logout'" 
+            class="action-button danger-button">
+      🚪 Çıkış Yap
+    </button>
+  </div>
+</div>
+
+</body>
+</html>

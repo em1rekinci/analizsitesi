@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Panel - Ödemeler</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .admin-container {
+      max-width: 1200px;
+      margin: 40px auto;
+      padding: 0 20px;
+    }
+    
+    .admin-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 30px;
+    }
+    
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+    
+    .stat-card {
+      background: #020617;
+      padding: 20px;
+      border-radius: 12px;
+      text-align: center;
+    }
+    
+    .stat-number {
+      font-size: 32px;
+      font-weight: bold;
+      color: #38bdf8;
+    }
+    
+    .stat-label {
+      color: #94a3b8;
+      font-size: 14px;
+      margin-top: 8px;
+    }
+    
+    .pending-badge {
+      background: #facc15;
+      color: #000;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: bold;
+      margin-left: 8px;
+    }
+    
+    .payments-table {
+      background: #020617;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    
+    .table-header {
+      display: grid;
+      grid-template-columns: 120px 200px 150px 100px 120px 150px 200px;
+      padding: 16px;
+      background: #0f172a;
+      font-weight: bold;
+      font-size: 14px;
+      color: #94a3b8;
+    }
+    
+    .table-row {
+      display: grid;
+      grid-template-columns: 120px 200px 150px 100px 120px 150px 200px;
+      padding: 16px;
+      border-bottom: 1px solid #1e293b;
+      align-items: center;
+    }
+    
+    .table-row:hover {
+      background: #0f172a;
+    }
+    
+    .status-badge {
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: bold;
+      display: inline-block;
+    }
+    
+    .status-pending {
+      background: #facc15;
+      color: #000;
+    }
+    
+    .status-approved {
+      background: #22c55e;
+      color: #000;
+    }
+    
+    .status-rejected {
+      background: #dc2626;
+      color: #fff;
+    }
+    
+    .action-buttons {
+      display: flex;
+      gap: 8px;
+    }
+    
+    .btn {
+      padding: 6px 12px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: bold;
+    }
+    
+    .btn-approve {
+      background: #22c55e;
+      color: #000;
+    }
+    
+    .btn-reject {
+      background: #dc2626;
+      color: #fff;
+    }
+    
+    .btn-view {
+      background: #38bdf8;
+      color: #000;
+    }
+    
+    .btn:hover {
+      opacity: 0.8;
+    }
+    
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.8);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .modal.show {
+      display: flex;
+    }
+    
+    .modal-content {
+      background: #020617;
+      padding: 30px;
+      border-radius: 12px;
+      max-width: 600px;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+    
+    .modal-image {
+      width: 100%;
+      border-radius: 8px;
+      margin: 20px 0;
+    }
+    
+    .close-modal {
+      background: #334155;
+      color: #e5e7eb;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      cursor: pointer;
+      width: 100%;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="admin-container">
+  <div class="admin-header">
+    <h1>🔐 Admin Panel</h1>
+    <a href="/dashboard" style="color: #38bdf8; text-decoration: none;">← Dashboard</a>
+  </div>
+  
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-number">{{ stats.total_users }}</div>
+      <div class="stat-label">Toplam Kullanıcı</div>
+    </div>
+    
+    <div class="stat-card">
+      <div class="stat-number" style="color: #22c55e;">{{ stats.premium_users }}</div>
+      <div class="stat-label">Premium Üye</div>
+    </div>
+    
+    <div class="stat-card">
+      <div class="stat-number" style="color: #facc15;">{{ stats.pending_payments }}</div>
+      <div class="stat-label">Bekleyen Ödeme</div>
+    </div>
+    
+    <div class="stat-card">
+      <div class="stat-number" style="color: #38bdf8;">{{ stats.total_revenue }}₺</div>
+      <div class="stat-label">Toplam Gelir</div>
+    </div>
+  </div>
+  
+  <div class="payments-table">
+    <h2 style="padding: 20px; margin: 0; color: #38bdf8;">
+      Bekleyen Ödemeler
+      {% if pending_payments|length > 0 %}
+        <span class="pending-badge">{{ pending_payments|length }}</span>
+      {% endif %}
+    </h2>
+    
+    {% if pending_payments|length == 0 %}
+      <div style="padding: 40px; text-align: center; color: #94a3b8;">
+        ✓ Bekleyen ödeme bulunmuyor
+      </div>
+    {% else %}
+      <div class="table-header">
+        <div>Tarih</div>
+        <div>E-posta</div>
+        <div>Gönderen</div>
+        <div>Tutar</div>
+        <div>Referans</div>
+        <div>Durum</div>
+        <div>İşlem</div>
+      </div>
+      
+      {% for payment in pending_payments %}
+      <div class="table-row">
+        <div style="font-size: 13px;">{{ payment.created_at[:10] }}</div>
+        <div style="font-size: 13px;">{{ payment.email }}</div>
+        <div>{{ payment.sender_name }}</div>
+        <div style="font-weight: bold;">{{ payment.amount }}₺</div>
+        <div style="font-size: 12px; color: #94a3b8;">{{ payment.payment_ref }}</div>
+        <div>
+          <span class="status-badge status-{{ payment.status }}">
+            {{ payment.status_text }}
+          </span>
+        </div>
+        <div>
+          <div class="action-buttons">
+            <button class="btn btn-view" onclick="viewReceipt('{{ payment.id }}', '{{ payment.receipt_url }}')">
+              👁️ Görüntüle
+            </button>
+            <button class="btn btn-approve" onclick="approvePayment('{{ payment.id }}')">
+              ✓ Onayla
+            </button>
+            <button class="btn btn-reject" onclick="rejectPayment('{{ payment.id }}')">
+              ✗ Reddet
+            </button>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    {% endif %}
+  </div>
+  
+  <div class="payments-table" style="margin-top: 30px;">
+    <h2 style="padding: 20px; margin: 0; color: #22c55e;">
+      Onaylanan Ödemeler
+    </h2>
+    
+    {% if approved_payments|length == 0 %}
+      <div style="padding: 40px; text-align: center; color: #94a3b8;">
+        Henüz onaylanmış ödeme bulunmuyor
+      </div>
+    {% else %}
+      <div class="table-header">
+        <div>Tarih</div>
+        <div>E-posta</div>
+        <div>Gönderen</div>
+        <div>Tutar</div>
+        <div>Referans</div>
+        <div>Durum</div>
+        <div>İşlem</div>
+      </div>
+      
+      {% for payment in approved_payments %}
+      <div class="table-row">
+        <div style="font-size: 13px;">{{ payment.created_at[:10] }}</div>
+        <div style="font-size: 13px;">{{ payment.email }}</div>
+        <div>{{ payment.sender_name }}</div>
+        <div style="font-weight: bold;">{{ payment.amount }}₺</div>
+        <div style="font-size: 12px; color: #94a3b8;">{{ payment.payment_ref }}</div>
+        <div>
+          <span class="status-badge status-approved">✓ Onaylandı</span>
+        </div>
+        <div>
+          <button class="btn btn-view" onclick="viewReceipt('{{ payment.id }}', '{{ payment.receipt_url }}')">
+            👁️ Görüntüle
+          </button>
+        </div>
+      </div>
+      {% endfor %}
+    {% endif %}
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="modal" id="receiptModal">
+  <div class="modal-content">
+    <h3 style="color: #38bdf8;">Havale Dekontu</h3>
+    <img id="receiptImage" class="modal-image" src="" alt="Dekont">
+    <button class="close-modal" onclick="closeModal()">Kapat</button>
+  </div>
+</div>
+
+<script>
+function viewReceipt(paymentId, receiptUrl) {
+  document.getElementById('receiptImage').src = receiptUrl;
+  document.getElementById('receiptModal').classList.add('show');
+}
+
+function closeModal() {
+  document.getElementById('receiptModal').classList.remove('show');
+}
+
+function approvePayment(paymentId) {
+  if (!confirm('Bu ödemeyi onaylamak istediğinize emin misiniz? Kullanıcı premium yapılacak.')) {
+    return;
+  }
+  
+  fetch(`/admin/approve-payment/${paymentId}`, {
+    method: 'POST'
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.success) {
+      alert('✓ Ödeme onaylandı ve kullanıcı premium yapıldı!');
+      location.reload();
+    } else {
+      alert('❌ Hata: ' + data.error);
+    }
+  })
+  .catch(err => {
+    alert('❌ Bir hata oluştu: ' + err);
+  });
+}
+
+function rejectPayment(paymentId) {
+  const reason = prompt('Reddetme nedeni (opsiyonel):');
+  
+  fetch(`/admin/reject-payment/${paymentId}`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({reason: reason})
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.success) {
+      alert('✓ Ödeme reddedildi');
+      location.reload();
+    } else {
+      alert('❌ Hata: ' + data.error);
+    }
+  })
+  .catch(err => {
+    alert('❌ Bir hata oluştu: ' + err);
+  });
+}
+
+// Modal dışına tıklanınca kapat
+document.getElementById('receiptModal').addEventListener('click', function(e) {
+  if (e.target === this) {
+    closeModal();
+  }
+});
+</script>
+
+</body>
+</html>

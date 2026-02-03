@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kayıt Ol - Premium Analiz</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .register-card {
+      background: #020617;
+      padding: 30px;
+      border-radius: 14px;
+      width: 100%;
+      max-width: 420px;
+      box-shadow: 0 10px 40px rgba(0,0,0,.6);
+    }
+    
+    .register-card h2 {
+      color: #38bdf8;
+      text-align: center;
+      margin-bottom: 10px;
+    }
+    
+    .features {
+      background: #0f172a;
+      padding: 16px;
+      border-radius: 8px;
+      margin: 20px 0;
+    }
+    
+    .features ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    
+    .features li {
+      padding: 8px 0;
+      color: #22c55e;
+    }
+    
+    .features li::before {
+      content: "✓ ";
+      font-weight: bold;
+      margin-right: 8px;
+    }
+    
+    .form-group {
+      margin-bottom: 18px;
+    }
+    
+    .form-group label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 14px;
+      color: #94a3b8;
+    }
+    
+    .form-group input {
+      width: 100%;
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid #334155;
+      background: #0f172a;
+      color: #e5e7eb;
+      font-size: 15px;
+    }
+    
+    .form-group input:focus {
+      outline: none;
+      border-color: #38bdf8;
+    }
+    
+    .error-message {
+      background: #7f1d1d;
+      color: #fca5a5;
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      font-size: 14px;
+    }
+    
+    .success-message {
+      background: #14532d;
+      color: #86efac;
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      font-size: 14px;
+    }
+    
+    .submit-btn {
+      width: 100%;
+      padding: 14px;
+      background: #facc15;
+      color: #000;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    
+    .submit-btn:hover {
+      background: #fde047;
+    }
+    
+    .submit-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    .login-link {
+      text-align: center;
+      margin-top: 16px;
+      font-size: 14px;
+      color: #94a3b8;
+    }
+    
+    .login-link a {
+      color: #38bdf8;
+      text-decoration: none;
+    }
+    
+    .login-link a:hover {
+      text-decoration: underline;
+    }
+    
+    .price {
+      text-align: center;
+      font-size: 32px;
+      font-weight: bold;
+      color: #facc15;
+      margin: 16px 0;
+    }
+    
+    .price small {
+      font-size: 16px;
+      color: #94a3b8;
+    }
+  </style>
+</head>
+<body class="centered">
+
+<div class="register-card">
+  <h2>⭐ Premium Üyelik</h2>
+  <p style="text-align: center; opacity: 0.8; margin-bottom: 10px;">
+    Tüm maçlara sınırsız erişim + Günlük özel analizler
+  </p>
+
+  <div class="price">
+    299₺ <small>/ay</small>
+  </div>
+
+  <div class="features">
+    <ul>
+      <li>CL,5 Büyük Lig,Portekiz,Hollanda ve Championship Tüm Maçları</li>
+      <li>Günlük en iyi bahis önerileri</li>
+      <li>Gelişmiş istatistik analizleri</li>
+      <li>7/24 güncel maç verileri</li>
+    </ul>
+  </div>
+
+  {% if error %}
+  <div class="error-message">
+    {{ error }}
+  </div>
+  {% endif %}
+
+  {% if success %}
+  <div class="success-message">
+    ✓ Kayıt başarılı! Yönlendiriliyorsunuz...
+  </div>
+  {% endif %}
+
+  <form method="POST" action="/register">
+    <div class="form-group">
+      <label for="email">E-posta Adresi</label>
+      <input 
+        type="email" 
+        id="email" 
+        name="email" 
+        placeholder="ornek@email.com"
+        required
+        autocomplete="email"
+      >
+    </div>
+
+    <div class="form-group">
+      <label for="password">Şifre (min. 6 karakter)</label>
+      <input 
+        type="password" 
+        id="password" 
+        name="password" 
+        placeholder="••••••••"
+        minlength="6"
+        required
+        autocomplete="new-password"
+      >
+    </div>
+
+    <div class="form-group">
+      <label for="password2">Şifre Tekrar</label>
+      <input 
+        type="password" 
+        id="password2" 
+        name="password2" 
+        placeholder="••••••••"
+        minlength="6"
+        required
+        autocomplete="new-password"
+      >
+    </div>
+
+    <button type="submit" class="submit-btn">
+      🔒 Güvenli Ödeme ile Devam Et
+    </button>
+  </form>
+
+  <p class="login-link">
+    Zaten hesabınız var mı? <a href="/login">Giriş Yapın</a>
+  </p>
+
+  <p style="text-align: center; font-size: 12px; opacity: 0.6; margin-top: 20px;">
+    Ödemeler EFT/HAVALE ile Güvence Altındadır. 🔐
+  </p>
+</div>
+
+{% if success %}
+<script>
+  setTimeout(() => {
+    window.location.href = '/payment';
+  }, 2000);
+</script>
+{% endif %}
+
+</body>
+</html>
