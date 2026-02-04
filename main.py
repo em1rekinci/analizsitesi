@@ -57,7 +57,8 @@ COMPETITIONS = {
     "Ligue 1": "FL1",
     "Eredivisie": "DED",
     "Primeira Liga": "PPL",
-    "Championship": "ELC"
+    "Championship": "ELC",
+    "Brezilya Serie A": "BSA"
 }
 
 LEAGUE_WEIGHT = {
@@ -69,7 +70,8 @@ LEAGUE_WEIGHT = {
     "FL1": 1.02,
     "ELC": 1.01,
     "PPL": 1.00,
-    "DED": 0.98
+    "DED": 0.98,
+    "BSA": 1.00 
 }
 
 # =====================
