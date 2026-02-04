@@ -1,36 +1,49 @@
-from fastapi import FastAPI, Request, Cookie
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, Request, Form, Cookie, UploadFile, File
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 
 import requests, time, os
 from datetime import datetime, timedelta, timezone, date
 from collections import defaultdict
-
 from cache_manager import CacheManager
 from user_manager import UserManager
 from payment_manager import PaymentManager
 
+import os
+from fastapi.staticfiles import StaticFiles
+
+app = FastAPI()
+
+os.makedirs("uploads", exist_ok=True)
+
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+
+
 # =====================
 # APP
 # =====================
-app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
 # =====================
 # CONFIG
 # =====================
-API_KEY = os.getenv("FOOTBALL_API_KEY")
+API_KEY = os.getenv("FOOTBALL_API_KEY", "350b0fe840aa431d8e199a328ac5cd34")
 BASE_URL = "https://api.football-data.org/v4"
 HEADERS = {"X-Auth-Token": API_KEY}
-TR_TZ = timezone(timedelta(hours=3))
 
+# Admin şifresi (değiştirin!)
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "34emr256.")
+
+# Managers
 cache_manager = CacheManager()
 user_manager = UserManager()
 payment_manager = PaymentManager()
 
-TEAM_CACHE = {}  # RAM
+# Memory cache
+TEAM_CACHE = {}
+TR_TZ = timezone(timedelta(hours=3))
 
 # =====================
 # LIGLER
@@ -82,34 +95,23 @@ def safe_request(url, params=None):
         pass
     return {}
 
-
 # =====================
 # TEAM STATS
 # =====================
 def get_team_stats(team_id):
-    """Takım istatistiklerini getir"""
-    
     if team_id in TEAM_CACHE:
         return TEAM_CACHE[team_id]
-    
-    teams_cache = cache_manager.get_teams_cache()
-    team_id_str = str(team_id)
-    
-    if team_id_str in teams_cache:
-        TEAM_CACHE[team_id] = teams_cache[team_id_str]
-        return TEAM_CACHE[team_id]
-    
-    print(f"🌐 API'den takım çekiliyor: {team_id}")
-    matches = safe_request(
+
+    data = safe_request(
         f"{BASE_URL}/teams/{team_id}/matches",
         {"limit": 10, "status": "FINISHED"}
     ).get("matches", [])
 
     g_for = g_against = over25 = kg = fh15 = 0
 
-    for m in matches:
+    for m in data:
         ft = m["score"]["fullTime"]
-        ht = m["score"].get("halfTime")
+        ht = m["score"]["halfTime"]
         if ft["home"] is None:
             continue
 
@@ -119,17 +121,11 @@ def get_team_stats(team_id):
 
         g_for += tg
         g_against += og
+        if tg + og >= 3: over25 += 1
+        if tg > 0 and og > 0: kg += 1
+        if ht and ht["home"] + ht["away"] >= 2: fh15 += 1
 
-        if tg + og >= 3:
-            over25 += 1
-        if tg > 0 and og > 0:
-            kg += 1
-        if ht and ht["home"] is not None:
-            if ht["home"] + ht["away"] >= 2:
-                fh15 += 1
-
-    total = len(matches) or 1
-
+    total = len(data) or 1
     stats = {
         "avg_scored": round(g_for / total, 2),
         "avg_conceded": round(g_against / total, 2),
@@ -208,185 +204,60 @@ def build_markets(match, picks, league_code):
     return all_markets
 
 # =====================
-# FETCH ALL MATCHES - OPTİMİZE EDİLDİ
+# FETCH ALL MATCHES (1 KERE)
 # =====================
 def fetch_all_matches():
-    """Tüm liglerin bugünkü maçlarını API'den çek ve TARİH ile cache'le"""
-    print("🔄 Günlük veri güncelleniyor...")
-    
     grouped = defaultdict(list)
     picks = []
     today = date.today().isoformat()
-    all_matches = []
 
     for league, code in COMPETITIONS.items():
         data = safe_request(
             f"{BASE_URL}/competitions/{code}/matches",
             {"dateFrom": today, "dateTo": today}
-
         )
 
-        if not data:
-            print(f"⚠️ {league} için veri alınamadı, atlanıyor...")
-            continue
-
         for m in data.get("matches", []):
-            try:
-                dt = datetime.fromisoformat(
-                    m["utcDate"].replace("Z", "+00:00")
-                ).astimezone(TR_TZ)
+            dt = datetime.fromisoformat(
+                m["utcDate"].replace("Z", "+00:00")
+            ).astimezone(TR_TZ)
 
-                m["time"] = dt.strftime("%H:%M")
-                m["markets"] = build_markets(m, picks, code)
-                m["league"] = league
-                all_matches.append(m)
-            except Exception as e:
-                print(f"⚠️ Maç işleme hatası: {e}")
-                continue
+            m["time"] = dt.strftime("%H:%M")
+            m["league"] = league
+            grouped[league].append(m)
 
-    # FREE / PREMIUM LOGIC
-    total = len(all_matches)
-    
-    if total == 0:
-        print("⚠️ Hiç maç bulunamadı!")
-        return grouped, picks
-    
-    free_limit = 3 if total >= 10 else 2
-
-    all_matches.sort(key=lambda x: x["markets"]["best_value"], reverse=True)
-    free_set = {
-        f'{m["homeTeam"]["name"]}-{m["awayTeam"]["name"]}'
-        for m in all_matches[:free_limit]
-    }
-
-    for m in all_matches:
-        key = f'{m["homeTeam"]["name"]}-{m["awayTeam"]["name"]}'
-        m["is_free"] = key in free_set
-        grouped[m["league"]].append(m)
-    
-    # Cache'e kaydet - TARİH İLE BİRLİKTE!
-    try:
-        cache_manager.save_teams_cache({str(k): v for k, v in TEAM_CACHE.items()})
-        picks_sorted = sorted(picks, key=lambda x: x["value"], reverse=True)
-        
-        # ÖNEMLİ: Tarihi de kaydediyoruz!
-        cache_data = {
-            "matches": dict(grouped),
-            "picks": picks_sorted,
-            "date": today,  # BUGÜNÜN TARİHİNİ EKLEDİK
-            "timestamp": datetime.now().strftime("%d.%m.%Y %H:%M")
-        }
-        cache_manager.save_matches_cache(cache_data["matches"], cache_data["picks"])
-        print(f"✅ Veri başarıyla güncellendi ve cache'lendi! (Tarih: {today})")
-    except Exception as e:
-        print(f"⚠️ Cache kaydetme hatası: {e}")
-    
-    return grouped, sorted(picks, key=lambda x: x["value"], reverse=True)
+    cache_manager.save_teams_cache({str(k): v for k, v in TEAM_CACHE.items()})
+    cache_manager.save_matches_cache(grouped, picks)
 
 # =====================
-# DASHBOARD - SÜPER OPTİMİZE!
+# DASHBOARD
 # =====================
 @app.get("/", response_class=HTMLResponse)
 @app.get("/dashboard", response_class=HTMLResponse)
 def dashboard(request: Request, session_id: str = Cookie(None)):
-    """
-    🚀 HIZLI ANA SAYFA:
-    - Cache bugüne aitse -> Anında yükle (API çağrısı YOK!)
-    - Cache eski/yoksa -> API'den çek ve cache'le (günde 1 kere)
-    """
-    user = get_current_user(session_id)
+    user = user_manager.verify_session(session_id) if session_id else None
     is_premium = user["is_premium"] if user else False
-    
-    today = date.today().isoformat()
-    
-    # 1️⃣ Cache kontrolü - BUGÜNE AİT Mİ?
-    try:
-        cached_data = cache_manager.get_matches_cache()
-        
-        if cached_data and cached_data.get("date") == today and cached_data.get("matches"):
-            print(f"✅ ŞİMŞEK YÜKLEME: Cache'den (Tarih: {today}) - API çağrısı YAPILMADI!")
-            return templates.TemplateResponse(
-                "dashboard.html",
-                {
-                    "request": request,
-                    "matches": cached_data["matches"],
-                    "picks": cached_data.get("picks", []),
-                    "is_premium": is_premium,
-                    "user": user
-                }
-            )
-        else:
-            cache_date = cached_data.get('date') if cached_data else 'Hiç yok'
-            print(f"⚠️ Cache kullanılamaz! (Cachede: {cache_date}, Bugün: {today}) -> API çekilecek")
-    
-    except Exception as e:
-        print(f"⚠️ Cache okuma hatası: {e}")
-    
-    # 2️⃣ Cache yoksa/eskiyse -> API'den çek (günde 1 kere)
-    try:
-        print("🔄 API'den veri çekiliyor (bu işlem günde sadece 1 kere yapılır)...")
-        matches, picks = fetch_all_matches()
-        
-        return templates.TemplateResponse(
-            "dashboard.html",
-            {
-                "request": request,
-                "matches": matches if matches else {},
-                "picks": picks if picks else [],
-                "is_premium": is_premium,
-                "user": user
-            }
-        )
-        
-    except Exception as e:
-        print(f"❌ Dashboard hatası: {e}")
-        import traceback
-        traceback.print_exc()
-        
-        return HTMLResponse(content=f"""
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <style>
-                body {{
-                    font-family: Arial;
-                    background: #0f172a;
-                    color: #e5e7eb;
-                    padding: 40px;
-                    text-align: center;
-                }}
-                .error-box {{
-                    background: #020617;
-                    padding: 40px;
-                    border-radius: 12px;
-                    max-width: 600px;
-                    margin: 0 auto;
-                }}
-                h1 {{ color: #facc15; }}
-                .btn {{
-                    background: #38bdf8;
-                    color: #000;
-                    padding: 12px 24px;
-                    border-radius: 8px;
-                    text-decoration: none;
-                    display: inline-block;
-                    margin-top: 20px;
-                    font-weight: bold;
-                }}
-            </style>
-        </head>
-        <body>
-            <div class="error-box">
-                <h1>⚠️ Geçici Bir Sorun Oluştu</h1>
-                <p>Maç verileri şu anda yüklenemiyor.</p>
-                <p><strong>Sebep:</strong> {str(e)}</p>
-                <p style="opacity: 0.7;">Lütfen birkaç dakika sonra tekrar deneyin.</p>
-                <a href="/refresh" class="btn">🔄 Yeniden Dene</a>
-                <a href="/" class="btn">🏠 Ana Sayfa</a>
-            </div>
-        </body>
-        </html>
-        """, status_code=503)
+
+    cached = cache_manager.get_matches_cache()
+
+    # 🔥 CACHE YOKSA → İLK GİRİŞ → API ÇEK
+    if not cached:
+        fetch_all_matches()
+        cached = cache_manager.get_matches_cache()
+
+        if not cached:
+            return HTMLResponse("<h1>Veriler hazırlanıyor, 10-20 sn sonra yenileyin</h1>")
+
+    return templates.TemplateResponse(
+        "dashboard.html",
+        {
+            "request": request,
+            "matches": cached["matches"],
+            "picks": cached.get("picks", []),
+            "user": user,
+            "is_premium": is_premium
+        }
+    )
 
 # =====================
 # ACCOUNT PAGE
@@ -398,21 +269,17 @@ def account_page(request: Request, session_id: str = Cookie(None)):
     if not user:
         return RedirectResponse(url="/login", status_code=303)
     
-    # Premium kalan gün hesapla
-    days_left = 0
-    if user["is_premium"] and user["premium_until"]:
-        try:
-            premium_date = datetime.fromisoformat(user["premium_until"])
-            days_left = (premium_date - datetime.now()).days
-        except:
-            days_left = 0
+    # Premium bitiş tarihi hesapla
+    premium_expires = None
+    if user["is_premium"] and user.get("premium_until"):
+        premium_expires = datetime.fromisoformat(user["premium_until"]).strftime("%d.%m.%Y")
     
     return templates.TemplateResponse(
         "account.html",
         {
             "request": request,
             "user": user,
-            "days_left": max(0, days_left)
+            "premium_expires": premium_expires
         }
     )
 
@@ -420,12 +287,7 @@ def account_page(request: Request, session_id: str = Cookie(None)):
 # REGISTER (GET)
 # =====================
 @app.get("/register", response_class=HTMLResponse)
-def register_page(request: Request, session_id: str = Cookie(None)):
-    # Zaten giriş yapmışsa ödeme sayfasına yönlendir
-    user = get_current_user(session_id)
-    if user:
-        return RedirectResponse(url="/payment", status_code=303)
-    
+def register_page(request: Request):
     return templates.TemplateResponse("register.html", {"request": request})
 
 # =====================
@@ -436,9 +298,10 @@ async def register_submit(
     request: Request,
     email: str = Form(...),
     password: str = Form(...),
-    password2: str = Form(...)
+    confirm_password: str = Form(...)
 ):
-    if password != password2:
+    # Basit doğrulama
+    if password != confirm_password:
         return templates.TemplateResponse(
             "register.html",
             {"request": request, "error": "Şifreler eşleşmiyor"}
@@ -450,7 +313,7 @@ async def register_submit(
             {"request": request, "error": "Şifre en az 6 karakter olmalı"}
         )
     
-    # Kullanıcı oluştur
+    # Kullanıcıyı kaydet
     result = user_manager.register_user(email, password)
     
     if not result["success"]:
@@ -459,14 +322,12 @@ async def register_submit(
             {"request": request, "error": result["error"]}
         )
     
-    # Başarılı - giriş yap
+    # Kaydolduktan sonra otomatik login
     login_result = user_manager.login_user(email, password)
     
     if login_result["success"]:
-        response = templates.TemplateResponse(
-            "register.html",
-            {"request": request, "success": True}
-        )
+        # Başarılı kayıt sonrası payment sayfasına yönlendir
+        response = RedirectResponse(url="/payment", status_code=303)
         response.set_cookie(key="session_id", value=login_result["session_id"], httponly=True)
         return response
     
@@ -672,14 +533,16 @@ def refresh_data(request: Request, session_id: str = Cookie(None)):
     is_premium = user["is_premium"] if user else False
     
     try:
-        matches, picks = fetch_all_matches()
+        # API'den yeni veri çek
+        fetch_all_matches()
+        cached = cache_manager.get_matches_cache()
         
         return templates.TemplateResponse(
             "dashboard.html",
             {
                 "request": request,
-                "matches": matches,
-                "picks": picks,
+                "matches": cached["matches"],
+                "picks": cached.get("picks", []),
                 "is_premium": is_premium,
                 "user": user
             }
@@ -714,13 +577,6 @@ def health_check():
 # STARTUP
 # =====================
 @app.on_event("startup")
-async def startup_event():
-    print("🚀 Uygulama başlatılıyor...")
-    
-    try:
-        teams_cache = cache_manager.get_teams_cache()
-        TEAM_CACHE.update({int(k): v for k, v in teams_cache.items()})
-    except Exception as e:
-        print(f"⚠️ Startup cache yükleme hatası: {e}")
-    
-    print(f"✅ Başlangıç tamamlandı")
+async def startup():
+    teams = cache_manager.get_teams_cache()
+    TEAM_CACHE.update({int(k): v for k, v in teams.items()})
