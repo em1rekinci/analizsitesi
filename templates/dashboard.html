@@ -98,6 +98,38 @@
     .login-button:hover {
       background: #7dd3fc;
     }
+    
+    .no-matches {
+      background: #020617;
+      border-radius: 12px;
+      padding: 60px 30px;
+      text-align: center;
+      margin: 40px 0;
+    }
+    
+    .no-matches h2 {
+      color: #facc15;
+      margin-bottom: 16px;
+    }
+    
+    .no-matches p {
+      color: #94a3b8;
+      margin-bottom: 24px;
+    }
+    
+    .refresh-btn {
+      background: #38bdf8;
+      color: #000;
+      padding: 12px 24px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: bold;
+      display: inline-block;
+    }
+    
+    .refresh-btn:hover {
+      background: #7dd3fc;
+    }
   </style>
 </head>
 <body>
@@ -142,59 +174,70 @@
   </div>
 </div>
 
-{% for league, league_matches in matches.items() %}
-<div class="league-card">
-  <h2>{{ league }}</h2>
+{% if matches and matches|length > 0 %}
+  {% for league, league_matches in matches.items() %}
+  <div class="league-card">
+    <h2>{{ league }}</h2>
 
-  <div class="table header">
-    <div class="cell match">Maç</div>
-    <div class="cell">MS1</div>
-    <div class="cell">MS0</div>
-    <div class="cell">MS2</div>
-    <div class="cell">O2.5</div>
-    <div class="cell">KG</div>
-    <div class="cell">İY 1.5</div>
-  </div>
-
-  {% for match in league_matches %}
-  <div class="match-row {% if not match.is_free and not is_premium %}locked{% endif %}">
-
-    <div class="cell match">
-      {{ match.homeTeam.name }} - {{ match.awayTeam.name }}
-      <span class="time">{{ match.time }}</span>
+    <div class="table header">
+      <div class="cell match">Maç</div>
+      <div class="cell">MS1</div>
+      <div class="cell">MS0</div>
+      <div class="cell">MS2</div>
+      <div class="cell">O2.5</div>
+      <div class="cell">KG</div>
+      <div class="cell">İY 1.5</div>
     </div>
 
-    {% for key in ["MS1","MS0","MS2","O25","KG","FH15"] %}
-    <div class="cell {% if not match.is_free and not is_premium %}blur{% endif %}">
-      {{ match.markets[key] }}%
-      {% if match.markets.best == key and match.markets.best_value >= 60 %}
-        <span class="star">⭐</span>
+    {% for match in league_matches %}
+    <div class="match-row {% if not match.is_free and not is_premium %}locked{% endif %}">
+
+      <div class="cell match">
+        {{ match.homeTeam.name }} - {{ match.awayTeam.name }}
+        <span class="time">{{ match.time }}</span>
+      </div>
+
+      {% for key in ["MS1","MS0","MS2","O25","KG","FH15"] %}
+      <div class="cell {% if not match.is_free and not is_premium %}blur{% endif %}">
+        {{ match.markets[key] }}%
+        {% if match.markets.best == key and match.markets.best_value >= 60 %}
+          <span class="star">⭐</span>
+        {% endif %}
+      </div>
+      {% endfor %}
+
+      {% if not match.is_free and not is_premium %}
+      <div class="premium-overlay">
+        <a href="/register" class="premium-btn">🔒 Premium</a>
+      </div>
       {% endif %}
+
     </div>
     {% endfor %}
-
-    {% if not match.is_free and not is_premium %}
-    <div class="premium-overlay">
-      <a href="/register" class="premium-btn">🔒 Premium</a>
-    </div>
-    {% endif %}
-
   </div>
   {% endfor %}
-</div>
-{% endfor %}
 
-{% if picks %}
-<div class="picks">
-  <h2>🔥 Günün Oynanabilir Tercihleri</h2>
-  <ul>
-    {% for p in picks %}
-    <li>
-      <strong>{{ p.match }}</strong> → {{ p.market }} (%{{ p.value }})
-    </li>
-    {% endfor %}
-  </ul>
-</div>
+  {% if picks and picks|length > 0 %}
+  <div class="picks">
+    <h2>🔥 Günün Oynanabilir Tercihleri</h2>
+    <ul>
+      {% for p in picks %}
+      <li>
+        <strong>{{ p.match }}</strong> → {{ p.market }} (%{{ p.value }})
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+{% else %}
+  <!-- MAÇ YOK DURUMU -->
+  <div class="no-matches">
+    <h2>⚽ Bugün Maç Yok</h2>
+    <p>Seçili liglerde bugün oynanacak maç bulunmamaktadır.</p>
+    <p style="font-size: 14px; opacity: 0.7;">Yarın tekrar kontrol edin veya cache'i yenileyebilirsiniz.</p>
+    <a href="/refresh" class="refresh-btn">🔄 Yenile</a>
+  </div>
 {% endif %}
 
 <script>

@@ -325,8 +325,11 @@ def fetch_all_matches():
     
     return grouped, sorted(picks, key=lambda x: x["value"], reverse=True)
 
+# main.py'nin 328. satırından itibaren dashboard route'unu değiştir
+# Bu kısmı kopyala-yapıştır
+
 # =====================
-# DASHBOARD (PUBLIC)
+# DASHBOARD (PUBLIC) - GERÇEKTİR FİX
 # =====================
 @app.get("/", response_class=HTMLResponse)
 @app.get("/dashboard", response_class=HTMLResponse)
@@ -339,14 +342,14 @@ def dashboard(request: Request, session_id: str = Cookie(None)):
     try:
         cached_data = cache_manager.get_matches_cache()
         
-        if cached_data:
+        if cached_data and cached_data.get("matches"):
             print("✅ Cache'den yüklendi")
             return templates.TemplateResponse(
                 "dashboard.html",
                 {
                     "request": request,
                     "matches": cached_data["matches"],
-                    "picks": cached_data["picks"],
+                    "picks": cached_data.get("picks", []),
                     "is_premium": is_premium,
                     "user": user
                 }
@@ -359,15 +362,14 @@ def dashboard(request: Request, session_id: str = Cookie(None)):
         print("🔄 API'den veri çekiliyor...")
         matches, picks = fetch_all_matches()
         
-        if not matches:
-            raise Exception("API'den veri alınamadı")
-        
+        # ASIL SORUN BURADA: matches boş olabilir!
+        # Boş dict de gönder, template handle etsin
         return templates.TemplateResponse(
             "dashboard.html",
             {
                 "request": request,
-                "matches": matches,
-                "picks": picks,
+                "matches": matches if matches else {},  # Boş dict OK
+                "picks": picks if picks else [],
                 "is_premium": is_premium,
                 "user": user
             }
@@ -375,7 +377,54 @@ def dashboard(request: Request, session_id: str = Cookie(None)):
         
     except Exception as e:
         print(f"❌ Dashboard hatası: {e}")
-        return HTMLResponse(content="<h1>Geçici hata</h1>", status_code=503)
+        import traceback
+        traceback.print_exc()
+        
+        # HATA DURUMUNDA KULLANICI DOSTU MESAJ
+        return HTMLResponse(content=f"""
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <style>
+                body {{
+                    font-family: Arial;
+                    background: #0f172a;
+                    color: #e5e7eb;
+                    padding: 40px;
+                    text-align: center;
+                }}
+                .error-box {{
+                    background: #020617;
+                    padding: 40px;
+                    border-radius: 12px;
+                    max-width: 600px;
+                    margin: 0 auto;
+                }}
+                h1 {{ color: #facc15; }}
+                .btn {{
+                    background: #38bdf8;
+                    color: #000;
+                    padding: 12px 24px;
+                    border-radius: 8px;
+                    text-decoration: none;
+                    display: inline-block;
+                    margin-top: 20px;
+                    font-weight: bold;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="error-box">
+                <h1>⚠️ Geçici Bir Sorun Oluştu</h1>
+                <p>Maç verileri şu anda yüklenemiyor.</p>
+                <p><strong>Sebep:</strong> {str(e)}</p>
+                <p style="opacity: 0.7;">Lütfen birkaç dakika sonra tekrar deneyin.</p>
+                <a href="/refresh" class="btn">🔄 Yeniden Dene</a>
+                <a href="/" class="btn">🏠 Ana Sayfa</a>
+            </div>
+        </body>
+        </html>
+        """, status_code=503)
 
 # =====================
 # ACCOUNT PAGE
