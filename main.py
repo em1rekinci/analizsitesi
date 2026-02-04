@@ -10,9 +10,6 @@ from cache_manager import CacheManager
 from user_manager import UserManager
 from payment_manager import PaymentManager
 
-import os
-from fastapi.staticfiles import StaticFiles
-
 app = FastAPI()
 
 os.makedirs("uploads", exist_ok=True)
@@ -226,6 +223,10 @@ def fetch_all_matches():
 
             m["time"] = dt.strftime("%H:%M")
             m["league"] = league
+            
+            # 🔥 FIX: MARKETS EKLENDI
+            m["markets"] = build_markets(m, picks, code)
+            
             grouped[league].append(m)
 
     cache_manager.save_teams_cache({str(k): v for k, v in TEAM_CACHE.items()})
@@ -271,21 +272,11 @@ def account_page(request: Request, session_id: str = Cookie(None)):
     if not user:
         return RedirectResponse(url="/login", status_code=303)
     
-    # Premium kalan gün hesapla
-    days_left = 0
-    if user["is_premium"] and user["premium_until"]:
-        try:
-            premium_date = datetime.fromisoformat(user["premium_until"])
-            days_left = (premium_date - datetime.now()).days
-        except:
-            days_left = 0
-    
     return templates.TemplateResponse(
         "account.html",
         {
             "request": request,
-            "user": user,
-            "days_left": max(0, days_left)
+            "user": user
         }
     )
 
@@ -293,12 +284,7 @@ def account_page(request: Request, session_id: str = Cookie(None)):
 # REGISTER (GET)
 # =====================
 @app.get("/register", response_class=HTMLResponse)
-def register_page(request: Request, session_id: str = Cookie(None)):
-    # Zaten giriş yapmışsa ödeme sayfasına yönlendir
-    user = get_current_user(session_id)
-    if user:
-        return RedirectResponse(url="/payment", status_code=303)
-    
+def register_page(request: Request):
     return templates.TemplateResponse("register.html", {"request": request})
 
 # =====================
@@ -309,22 +295,17 @@ async def register_submit(
     request: Request,
     email: str = Form(...),
     password: str = Form(...),
-    password2: str = Form(...)
+    confirm_password: str = Form(...)
 ):
-    if password != password2:
+    # Şifre eşleşme kontrolü
+    if password != confirm_password:
         return templates.TemplateResponse(
             "register.html",
             {"request": request, "error": "Şifreler eşleşmiyor"}
         )
     
-    if len(password) < 6:
-        return templates.TemplateResponse(
-            "register.html",
-            {"request": request, "error": "Şifre en az 6 karakter olmalı"}
-        )
-    
     # Kullanıcı oluştur
-    result = user_manager.register_user(email, password)
+    result = user_manager.create_user(email, password)
     
     if not result["success"]:
         return templates.TemplateResponse(
@@ -332,7 +313,7 @@ async def register_submit(
             {"request": request, "error": result["error"]}
         )
     
-    # Başarılı - giriş yap
+    # Otomatik giriş yap
     login_result = user_manager.login_user(email, password)
     
     if login_result["success"]:
@@ -606,4 +587,3 @@ async def startup_event():
         print(f"⚠️ Startup cache yükleme hatası: {e}")
     
     print(f"✅ Başlangıç tamamlandı")
-
