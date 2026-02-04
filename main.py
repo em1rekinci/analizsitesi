@@ -543,19 +543,28 @@ def refresh_data(request: Request, session_id: str = Cookie(None)):
     is_premium = user["is_premium"] if user else False
     
     try:
-        matches, picks = fetch_all_matches()
+        # API'den yeni veri çek ve cache'e kaydet
+        fetch_all_matches()
+        
+        # Cache'den oku
+        cached = cache_manager.get_matches_cache()
+        
+        if not cached:
+            return HTMLResponse("<h1>Veriler yüklenemedi, lütfen birkaç saniye bekleyip tekrar deneyin</h1>")
         
         return templates.TemplateResponse(
             "dashboard.html",
             {
                 "request": request,
-                "matches": matches,
-                "picks": picks,
+                "matches": cached.get("matches", {}),
+                "picks": cached.get("picks", []),
                 "is_premium": is_premium,
                 "user": user
             }
         )
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return HTMLResponse(f"<h1>Hata:</h1><pre>{str(e)}</pre>")
 
 # =====================
