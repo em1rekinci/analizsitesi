@@ -1,36 +1,85 @@
-from fastapi import FastAPI, Request, Cookie
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, Request, Form, Cookie, UploadFile, File
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 
 import requests, time, os
 from datetime import datetime, timedelta, timezone, date
 from collections import defaultdict
-
 from cache_manager import CacheManager
 from user_manager import UserManager
 from payment_manager import PaymentManager
 
+import os
+from fastapi.staticfiles import StaticFiles
+
+app = FastAPI()
+
+os.makedirs("uploads", exist_ok=True)
+
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+
+
 # =====================
 # APP
 # =====================
-app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
 # =====================
 # CONFIG
 # =====================
-API_KEY = os.getenv("FOOTBALL_API_KEY")
+API_KEY = os.getenv("FOOTBALL_API_KEY", "350b0fe840aa431d8e199a328ac5cd34")
 BASE_URL = "https://api.football-data.org/v4"
 HEADERS = {"X-Auth-Token": API_KEY}
-TR_TZ = timezone(timedelta(hours=3))
 
+# Admin şifresi (değiştirin!)
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "34emr256.")
+
+# Managers
 cache_manager = CacheManager()
 user_manager = UserManager()
 payment_manager = PaymentManager()
 
-TEAM_CACHE = {}  # RAM
+# Memory cache
+TEAM_CACHE = {}
+TR_TZ = timezone(timedelta(hours=3))
+
+# =====================
+# LIGLER
+# =====================
+COMPETITIONS = {
+    "Champions League": "CL",
+    "Premier League": "PL",
+    "La Liga": "PD",
+    "Serie A": "SA",
+    "Bundesliga": "BL1",
+    "Ligue 1": "FL1",
+    "Eredivisie": "DED",
+    "Primeira Liga": "PPL",
+    "Championship": "ELC"
+}
+
+LEAGUE_WEIGHT = {
+    "CL": 1.08,
+    "PL": 1.05,
+    "BL1": 1.04,
+    "SA": 1.04,
+    "PD": 1.03,
+    "FL1": 1.02,
+    "ELC": 1.01,
+    "PPL": 1.00,
+    "DED": 0.98
+}
+
+# =====================
+# HELPER: GET USER FROM COOKIE
+# =====================
+def get_current_user(session_id: str = None):
+    """Cookie'den kullanıcıyı al"""
+    if not session_id:
+        return None
+    return user_manager.verify_session(session_id)
 
 # =====================
 # SAFE REQUEST
@@ -89,6 +138,72 @@ def get_team_stats(team_id):
     return stats
 
 # =====================
+# PERCENT ENGINE
+# =====================
+def clamp(x, low=5, high=95):
+    return max(low, min(high, x))
+
+def ms_probs(hs, as_):
+    diff = hs["avg_scored"] - as_["avg_scored"]
+    raw = 50 + diff * 9
+    ms1 = clamp(raw)
+    ms2 = clamp(100 - raw)
+    ms0 = clamp(100 - (ms1 + ms2), 8, 30)
+
+    t = ms1 + ms0 + ms2
+    return {
+        "MS1": round(ms1 / t * 100, 2),
+        "MS0": round(ms0 / t * 100, 2),
+        "MS2": round(ms2 / t * 100, 2)
+    }
+
+def over_probs(hs, as_):
+    base = (hs["over25"] + as_["over25"]) / 2
+    adj = abs(hs["avg_scored"] - as_["avg_scored"]) * 4
+    o = clamp(base + adj, 10, 85)
+    return {"O25": round(o, 2)}
+
+def kg_probs(hs, as_):
+    gap = abs(hs["avg_scored"] - as_["avg_scored"])
+    base = (hs["kg"] + as_["kg"]) / 2
+    o = clamp(base - gap * 6, 10, 75)
+    return {"KG": round(o, 2)}
+
+def fh_probs(hs, as_):
+    o = clamp((hs["fh15"] + as_["fh15"]) / 2, 5, 80)
+    return {"FH15": round(o, 2)}
+
+# =====================
+# MARKETS
+# =====================
+def build_markets(match, picks, league_code):
+    hs = get_team_stats(match["homeTeam"]["id"])
+    as_ = get_team_stats(match["awayTeam"]["id"])
+
+    ms = ms_probs(hs, as_)
+    over = over_probs(hs, as_)
+    kg = kg_probs(hs, as_)
+    fh = fh_probs(hs, as_)
+
+    all_markets = {**ms, **over, **kg}
+    best_key, best_val = max(all_markets.items(), key=lambda x: x[1])
+
+    weighted = min(best_val * LEAGUE_WEIGHT.get(league_code, 1.0), 95)
+
+    if weighted >= 65:
+        picks.append({
+            "match": f"{match['homeTeam']['name']} - {match['awayTeam']['name']}",
+            "market": best_key,
+            "value": round(weighted, 2)
+        })
+
+    all_markets["FH15"] = fh["FH15"]
+    all_markets["best"] = best_key
+    all_markets["best_value"] = round(weighted, 2)
+
+    return all_markets
+
+# =====================
 # FETCH ALL MATCHES (1 KERE)
 # =====================
 def fetch_all_matches():
@@ -96,15 +211,7 @@ def fetch_all_matches():
     picks = []
     today = date.today().isoformat()
 
-    competitions = {
-        "Premier League": "PL",
-        "La Liga": "PD",
-        "Serie A": "SA",
-        "Bundesliga": "BL1",
-        "Ligue 1": "FL1"
-    }
-
-    for league, code in competitions.items():
+    for league, code in COMPETITIONS.items():
         data = safe_request(
             f"{BASE_URL}/competitions/{code}/matches",
             {"dateFrom": today, "dateTo": today}
@@ -151,6 +258,322 @@ def dashboard(request: Request, session_id: str = Cookie(None)):
             "is_premium": is_premium
         }
     )
+
+# =====================
+# ACCOUNT PAGE
+# =====================
+@app.get("/account", response_class=HTMLResponse)
+def account_page(request: Request, session_id: str = Cookie(None)):
+    user = get_current_user(session_id)
+    
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
+    
+    # Premium bitiş tarihi hesapla
+    premium_expires = None
+    if user["is_premium"] and user.get("premium_until"):
+        premium_expires = datetime.fromisoformat(user["premium_until"]).strftime("%d.%m.%Y")
+    
+    return templates.TemplateResponse(
+        "account.html",
+        {
+            "request": request,
+            "user": user,
+            "premium_expires": premium_expires
+        }
+    )
+
+# =====================
+# REGISTER (GET)
+# =====================
+@app.get("/register", response_class=HTMLResponse)
+def register_page(request: Request):
+    return templates.TemplateResponse("register.html", {"request": request})
+
+# =====================
+# REGISTER (POST)
+# =====================
+@app.post("/register", response_class=HTMLResponse)
+async def register_submit(
+    request: Request,
+    email: str = Form(...),
+    password: str = Form(...),
+    confirm_password: str = Form(...)
+):
+    # Basit doğrulama
+    if password != confirm_password:
+        return templates.TemplateResponse(
+            "register.html",
+            {"request": request, "error": "Şifreler eşleşmiyor"}
+        )
+    
+    if len(password) < 6:
+        return templates.TemplateResponse(
+            "register.html",
+            {"request": request, "error": "Şifre en az 6 karakter olmalı"}
+        )
+    
+    # Kullanıcıyı kaydet
+    result = user_manager.register_user(email, password)
+    
+    if not result["success"]:
+        return templates.TemplateResponse(
+            "register.html",
+            {"request": request, "error": result["error"]}
+        )
+    
+    # Kaydolduktan sonra otomatik login
+    login_result = user_manager.login_user(email, password)
+    
+    if login_result["success"]:
+        response = templates.TemplateResponse(
+            "register.html",
+            {"request": request, "success": True}
+        )
+        response.set_cookie(key="session_id", value=login_result["session_id"], httponly=True)
+        return response
+    
+    return templates.TemplateResponse(
+        "register.html",
+        {"request": request, "error": "Kayıt başarılı ama giriş yapılamadı"}
+    )
+
+# =====================
+# LOGIN (GET)
+# =====================
+@app.get("/login", response_class=HTMLResponse)
+def login_page(request: Request):
+    return templates.TemplateResponse("login_page.html", {"request": request})
+
+# =====================
+# LOGIN (POST)
+# =====================
+@app.post("/login", response_class=HTMLResponse)
+async def login_submit(
+    request: Request,
+    email: str = Form(...),
+    password: str = Form(...)
+):
+    result = user_manager.login_user(email, password)
+    
+    if not result["success"]:
+        return templates.TemplateResponse(
+            "login_page.html",
+            {"request": request, "error": result["error"]}
+        )
+    
+    response = RedirectResponse(url="/dashboard", status_code=303)
+    response.set_cookie(key="session_id", value=result["session_id"], httponly=True)
+    return response
+
+# =====================
+# LOGOUT
+# =====================
+@app.get("/logout")
+def logout(session_id: str = Cookie(None)):
+    if session_id:
+        user_manager.delete_session(session_id)
+    
+    response = RedirectResponse(url="/dashboard", status_code=303)
+    response.delete_cookie("session_id")
+    return response
+
+# =====================
+# PAYMENT PAGE (Havale/EFT)
+# =====================
+@app.get("/payment", response_class=HTMLResponse)
+def payment_page(request: Request, session_id: str = Cookie(None)):
+    user = get_current_user(session_id)
+    
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
+    
+    # Referans kodu oluştur
+    payment_ref = payment_manager.generate_payment_ref(user["user_id"])
+    
+    return templates.TemplateResponse(
+        "payment_havale.html",
+        {
+            "request": request,
+            "user_email": user["email"],
+            "payment_ref": payment_ref
+        }
+    )
+
+# =====================
+# SUBMIT PAYMENT (Dekont Yükle)
+# =====================
+@app.post("/submit-payment")
+async def submit_payment(
+    request: Request,
+    session_id: str = Cookie(None),
+    payment_ref: str = Form(...),
+    sender_name: str = Form(...),
+    amount: float = Form(...),
+    notes: str = Form(""),
+    receipt: UploadFile = File(...)
+):
+    user = get_current_user(session_id)
+    
+    if not user:
+        return JSONResponse({"success": False, "error": "Giriş yapmanız gerekiyor"})
+    
+    # Dosya boyutu kontrolü (5MB)
+    if receipt.size > 5 * 1024 * 1024:
+        return JSONResponse({"success": False, "error": "Dosya çok büyük (max 5MB)"})
+    
+    # Ödeme kaydı oluştur
+    result = payment_manager.create_payment(
+        user_id=user["user_id"],
+        email=user["email"],
+        amount=amount,
+        sender_name=sender_name,
+        receipt_file=receipt,
+        notes=notes
+    )
+    
+    if result["success"]:
+        return JSONResponse({"success": True, "payment_ref": result["payment_ref"]})
+    else:
+        return JSONResponse({"success": False, "error": result["error"]})
+
+# =====================
+# PAYMENT PENDING PAGE
+# =====================
+@app.get("/payment-pending", response_class=HTMLResponse)
+def payment_pending_page(request: Request, session_id: str = Cookie(None)):
+    user = get_current_user(session_id)
+    
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
+    
+    return templates.TemplateResponse(
+        "payment_pending.html",
+        {
+            "request": request,
+            "user_email": user["email"],
+            "upload_time": datetime.now().strftime("%d.%m.%Y %H:%M"),
+            "payment_ref": "Kontrol ediliyor..."
+        }
+    )
+
+# =====================
+# ADMIN PANEL
+# =====================
+@app.get("/admin", response_class=HTMLResponse)
+def admin_panel(request: Request, admin_password: str = None):
+    # Basit şifre kontrolü (gerçek projede daha güvenli olmalı)
+    if admin_password != ADMIN_PASSWORD:
+        return HTMLResponse("""
+            <html>
+            <body style="font-family: Arial; background: #0f172a; color: #fff; padding: 40px; text-align: center;">
+                <h2>🔐 Admin Girişi</h2>
+                <form method="GET">
+                    <input type="password" name="admin_password" placeholder="Admin şifresi" 
+                           style="padding: 12px; border-radius: 8px; border: none; margin: 10px;">
+                    <button type="submit" style="padding: 12px 24px; background: #38bdf8; 
+                            color: #000; border: none; border-radius: 8px; cursor: pointer;">Giriş</button>
+                </form>
+            </body>
+            </html>
+        """)
+    
+    # İstatistikler
+    user_stats = user_manager.get_user_stats()
+    payment_stats = payment_manager.get_payment_stats()
+    
+    stats = {**user_stats, **payment_stats}
+    
+    # Bekleyen ve onaylanan ödemeler
+    pending_payments = payment_manager.get_pending_payments()
+    approved_payments = payment_manager.get_approved_payments(limit=10)
+    
+    return templates.TemplateResponse(
+        "admin_panel.html",
+        {
+            "request": request,
+            "stats": stats,
+            "pending_payments": pending_payments,
+            "approved_payments": approved_payments
+        }
+    )
+
+# =====================
+# ADMIN: APPROVE PAYMENT
+# =====================
+@app.post("/admin/approve-payment/{payment_id}")
+async def admin_approve_payment(payment_id: int):
+    # Ödemeyi onayla
+    result = payment_manager.approve_payment(payment_id)
+    
+    if not result["success"]:
+        return JSONResponse({"success": False, "error": result["error"]})
+    
+    # Kullanıcıyı premium yap
+    user_id = result["user_id"]
+    user_manager.activate_premium(user_id, months=1)
+    
+    return JSONResponse({"success": True})
+
+# =====================
+# ADMIN: REJECT PAYMENT
+# =====================
+@app.post("/admin/reject-payment/{payment_id}")
+async def admin_reject_payment(payment_id: int, request: Request):
+    body = await request.json()
+    reason = body.get("reason", "")
+    
+    result = payment_manager.reject_payment(payment_id, reason)
+    return JSONResponse(result)
+
+# =====================
+# REFRESH
+# =====================
+@app.get("/refresh", response_class=HTMLResponse)
+def refresh_data(request: Request, session_id: str = Cookie(None)):
+    user = get_current_user(session_id)
+    is_premium = user["is_premium"] if user else False
+    
+    try:
+        # API'den yeni veri çek
+        fetch_all_matches()
+        cached = cache_manager.get_matches_cache()
+        
+        return templates.TemplateResponse(
+            "dashboard.html",
+            {
+                "request": request,
+                "matches": cached["matches"],
+                "picks": cached.get("picks", []),
+                "is_premium": is_premium,
+                "user": user
+            }
+        )
+    except Exception as e:
+        return HTMLResponse(f"<h1>Hata:</h1><pre>{str(e)}</pre>")
+
+# =====================
+# HEALTH
+# =====================
+@app.get("/health")
+def health_check():
+    try:
+        cached_data = cache_manager.get_matches_cache()
+        stats = user_manager.get_user_stats()
+        payment_stats = payment_manager.get_payment_stats()
+        
+        return {
+            "status": "healthy",
+            "timestamp": datetime.now().isoformat(),
+            "cache": {
+                "status": "loaded" if cached_data else "empty",
+                "date": cached_data.get("date") if cached_data else None
+            },
+            "users": stats,
+            "payments": payment_stats
+        }
+    except Exception as e:
+        return {"status": "unhealthy", "error": str(e)}
 
 # =====================
 # STARTUP
