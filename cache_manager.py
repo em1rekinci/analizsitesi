@@ -1,101 +1,61 @@
 import json
-import os
 from datetime import date, datetime
 from pathlib import Path
 
+
 class CacheManager:
-    """Günlük maç ve takım istatistiklerini yöneten cache sistemi"""
-    
     def __init__(self, cache_dir="cache_data"):
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(exist_ok=True)
-        self.today = str(date.today())
-        
-        # Cache dosya yolları
+        self.today = date.today().isoformat()
+
         self.matches_file = self.cache_dir / f"matches_{self.today}.json"
         self.teams_file = self.cache_dir / f"teams_{self.today}.json"
-        
-    def _is_cache_valid(self, filepath):
-        """Cache dosyasının bugüne ait olup olmadığını kontrol et"""
-        if not filepath.exists():
-            return False
-            
-        # Dosya adından tarihi çıkar
-        filename = filepath.stem  # matches_2025-02-03
-        file_date = filename.split('_')[-1]
-        
-        return file_date == self.today
-    
+
+    # =====================
+    # MATCH CACHE
+    # =====================
     def get_matches_cache(self):
-        """Maçları cache'den oku"""
-        if self._is_cache_valid(self.matches_file):
-            try:
-                with open(self.matches_file, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    print(f"✅ Cache'den {len(data.get('matches', {}))} lig verisi yüklendi")
-                    return data
-            except Exception as e:
-                print(f"⚠️ Cache okuma hatası: {e}")
-                return None
-        return None
-    
+        if not self.matches_file.exists():
+            return None
+        try:
+            with open(self.matches_file, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return None
+
     def save_matches_cache(self, matches, picks):
-        """Maç verilerini cache'e kaydet - TARİH ile"""
-        try:
-            cache_data = {
-                "matches": matches,
-                "picks": picks,
-                "date": date.today().isoformat(),  # ÖNEMLİ: Bugünün tarihi
-                "timestamp": datetime.now().strftime("%d.%m.%Y %H:%M")
-            }
-            
-            with open(self.matches_file, 'w', encoding='utf-8') as f:
-                json.dump(cache_data, f, ensure_ascii=False, indent=2)
-            
-            print(f"💾 Cache kaydedildi: {len(matches)} lig, Tarih: {cache_data['date']}")
-            
-            # Eski cache dosyalarını temizle
-            self._cleanup_old_caches()
-            
-        except Exception as e:
-            print(f"⚠️ Cache kaydetme hatası: {e}")
-    
+        data = {
+            "date": self.today,
+            "timestamp": datetime.now().strftime("%d.%m.%Y %H:%M"),
+            "matches": matches,
+            "picks": picks,
+        }
+        with open(self.matches_file, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+
+        self._cleanup_old()
+
+    # =====================
+    # TEAM CACHE
+    # =====================
     def get_teams_cache(self):
-        """Takım istatistiklerini cache'den oku"""
-        if self._is_cache_valid(self.teams_file):
-            try:
-                with open(self.teams_file, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    print(f"✅ {len(data)} takım istatistiği cache'den yüklendi")
-                    return data
-            except Exception as e:
-                print(f"⚠️ Takım cache okuma hatası: {e}")
-                return {}
-        return {}
-    
-    def save_teams_cache(self, teams_dict):
-        """Takım istatistiklerini cache'e kaydet"""
+        if not self.teams_file.exists():
+            return {}
         try:
-            with open(self.teams_file, 'w', encoding='utf-8') as f:
-                json.dump(teams_dict, f, ensure_ascii=False, indent=2)
-            
-            print(f"💾 {len(teams_dict)} takım istatistiği kaydedildi")
-            
-        except Exception as e:
-            print(f"⚠️ Takım cache kaydetme hatası: {e}")
-    
-    def _cleanup_old_caches(self):
-        """Eski günlere ait cache dosyalarını sil"""
-        try:
-            for file in self.cache_dir.glob("*.json"):
-                if not self._is_cache_valid(file):
-                    file.unlink()
-                    print(f"🗑️ Eski cache silindi: {file.name}")
-        except Exception as e:
-            print(f"⚠️ Cache temizleme hatası: {e}")
-    
-    def clear_all_cache(self):
-        """Tüm cache'i temizle (debug amaçlı)"""
+            with open(self.teams_file, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+
+    def save_teams_cache(self, team_cache: dict):
+        with open(self.teams_file, "w", encoding="utf-8") as f:
+            json.dump(team_cache, f, ensure_ascii=False, indent=2)
+
+    # =====================
+    # CLEANUP
+    # =====================
+    def _cleanup_old(self):
         for file in self.cache_dir.glob("*.json"):
-            file.unlink()
-        print("🗑️ Tüm cache temizlendi")
+            if self.today not in file.name:
+                file.unlink()
