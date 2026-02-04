@@ -258,10 +258,10 @@ def build_markets(match, picks, league_code):
     return all_markets
 
 # =====================
-# FETCH ALL MATCHES
+# FETCH ALL MATCHES - OPTİMİZE EDİLDİ
 # =====================
 def fetch_all_matches():
-    """Tüm liglerin bugünkü maçlarını API'den çek"""
+    """Tüm liglerin bugünkü maçlarını API'den çek ve TARİH ile cache'le"""
     print("🔄 Günlük veri güncelleniyor...")
     
     grouped = defaultdict(list)
@@ -314,36 +314,47 @@ def fetch_all_matches():
         m["is_free"] = key in free_set
         grouped[m["league"]].append(m)
     
-    # Cache'e kaydet
+    # Cache'e kaydet - TARİH İLE BİRLİKTE!
     try:
         cache_manager.save_teams_cache({str(k): v for k, v in TEAM_CACHE.items()})
         picks_sorted = sorted(picks, key=lambda x: x["value"], reverse=True)
-        cache_manager.save_matches_cache(dict(grouped), picks_sorted)
-        print("✅ Veri başarıyla güncellendi ve cache'lendi!")
+        
+        # ÖNEMLİ: Tarihi de kaydediyoruz!
+        cache_data = {
+            "matches": dict(grouped),
+            "picks": picks_sorted,
+            "date": today,  # BUGÜNÜN TARİHİNİ EKLEDİK
+            "timestamp": datetime.now().strftime("%d.%m.%Y %H:%M")
+        }
+        cache_manager.save_matches_cache(cache_data["matches"], cache_data["picks"])
+        print(f"✅ Veri başarıyla güncellendi ve cache'lendi! (Tarih: {today})")
     except Exception as e:
         print(f"⚠️ Cache kaydetme hatası: {e}")
     
     return grouped, sorted(picks, key=lambda x: x["value"], reverse=True)
 
-# main.py'nin 328. satırından itibaren dashboard route'unu değiştir
-# Bu kısmı kopyala-yapıştır
-
 # =====================
-# DASHBOARD (PUBLIC) - GERÇEKTİR FİX
+# DASHBOARD - SÜPER OPTİMİZE!
 # =====================
 @app.get("/", response_class=HTMLResponse)
 @app.get("/dashboard", response_class=HTMLResponse)
 def dashboard(request: Request, session_id: str = Cookie(None)):
-    # Kullanıcı kontrolü
+    """
+    🚀 HIZLI ANA SAYFA:
+    - Cache bugüne aitse -> Anında yükle (API çağrısı YOK!)
+    - Cache eski/yoksa -> API'den çek ve cache'le (günde 1 kere)
+    """
     user = get_current_user(session_id)
     is_premium = user["is_premium"] if user else False
     
-    # 1. Önce cache'den dene
+    today = date.today().isoformat()
+    
+    # 1️⃣ Cache kontrolü - BUGÜNE AİT Mİ?
     try:
         cached_data = cache_manager.get_matches_cache()
         
-        if cached_data and cached_data.get("matches"):
-            print("✅ Cache'den yüklendi")
+        if cached_data and cached_data.get("date") == today and cached_data.get("matches"):
+            print(f"✅ ŞİMŞEK YÜKLEME: Cache'den (Tarih: {today}) - API çağrısı YAPILMADI!")
             return templates.TemplateResponse(
                 "dashboard.html",
                 {
@@ -354,21 +365,23 @@ def dashboard(request: Request, session_id: str = Cookie(None)):
                     "user": user
                 }
             )
+        else:
+            cache_date = cached_data.get('date') if cached_data else 'Hiç yok'
+            print(f"⚠️ Cache kullanılamaz! (Cachede: {cache_date}, Bugün: {today}) -> API çekilecek")
+    
     except Exception as e:
         print(f"⚠️ Cache okuma hatası: {e}")
     
-    # 2. Cache yoksa API'den çek
+    # 2️⃣ Cache yoksa/eskiyse -> API'den çek (günde 1 kere)
     try:
-        print("🔄 API'den veri çekiliyor...")
+        print("🔄 API'den veri çekiliyor (bu işlem günde sadece 1 kere yapılır)...")
         matches, picks = fetch_all_matches()
         
-        # ASIL SORUN BURADA: matches boş olabilir!
-        # Boş dict de gönder, template handle etsin
         return templates.TemplateResponse(
             "dashboard.html",
             {
                 "request": request,
-                "matches": matches if matches else {},  # Boş dict OK
+                "matches": matches if matches else {},
                 "picks": picks if picks else [],
                 "is_premium": is_premium,
                 "user": user
@@ -380,7 +393,6 @@ def dashboard(request: Request, session_id: str = Cookie(None)):
         import traceback
         traceback.print_exc()
         
-        # HATA DURUMUNDA KULLANICI DOSTU MESAJ
         return HTMLResponse(content=f"""
         <html>
         <head>

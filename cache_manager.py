@@ -39,15 +39,17 @@ class CacheManager:
                 return None
         return None
     
-    def save_matches_cache(self, matches_data, picks_data):
-        """Maçları ve picks'i cache'e kaydet"""
-        try:
-            cache_data = {
-                "date": self.today,
-                "timestamp": datetime.now().isoformat(),
-                "matches": matches_data,
-                "picks": picks_data
-            }
+         def save_matches_cache(self, matches, picks):
+         """Maç verilerini cache'e kaydet - TARİH ile"""
+             from datetime import date
+    
+             cache_data = {
+                 "matches": matches,
+                 "picks": picks,
+                 "date": date.today().isoformat(),  # ÖNEMLİ: Bugünün tarihi
+                 "timestamp": datetime.now().strftime("%d.%m.%Y %H:%M")
+              }
+  
             
             with open(self.matches_file, 'w', encoding='utf-8') as f:
                 json.dump(cache_data, f, ensure_ascii=False, indent=2)
