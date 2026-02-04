@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Request, Cookie
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 
@@ -24,21 +24,20 @@ templates = Jinja2Templates(directory="templates")
 API_KEY = os.getenv("FOOTBALL_API_KEY")
 BASE_URL = "https://api.football-data.org/v4"
 HEADERS = {"X-Auth-Token": API_KEY}
-
 TR_TZ = timezone(timedelta(hours=3))
 
 cache_manager = CacheManager()
 user_manager = UserManager()
 payment_manager = PaymentManager()
 
-TEAM_CACHE = {}  # RAM ONLY
+TEAM_CACHE = {}  # RAM
 
 # =====================
 # SAFE REQUEST
 # =====================
 def safe_request(url, params=None):
     try:
-        r = requests.get(url, headers=HEADERS, params=params, timeout=25)
+        r = requests.get(url, headers=HEADERS, params=params, timeout=30)
         if r.status_code == 200:
             return r.json()
         if r.status_code == 429:
@@ -90,7 +89,7 @@ def get_team_stats(team_id):
     return stats
 
 # =====================
-# FETCH ALL MATCHES
+# FETCH ALL MATCHES (1 KERE)
 # =====================
 def fetch_all_matches():
     grouped = defaultdict(list)
@@ -102,7 +101,7 @@ def fetch_all_matches():
         "La Liga": "PD",
         "Serie A": "SA",
         "Bundesliga": "BL1",
-        "Ligue 1": "FL1",
+        "Ligue 1": "FL1"
     }
 
     for league, code in competitions.items():
@@ -124,7 +123,7 @@ def fetch_all_matches():
     cache_manager.save_matches_cache(grouped, picks)
 
 # =====================
-# DASHBOARD (CACHE ONLY)
+# DASHBOARD
 # =====================
 @app.get("/", response_class=HTMLResponse)
 @app.get("/dashboard", response_class=HTMLResponse)
@@ -134,8 +133,13 @@ def dashboard(request: Request, session_id: str = Cookie(None)):
 
     cached = cache_manager.get_matches_cache()
 
+    # 🔥 CACHE YOKSA → İLK GİRİŞ → API ÇEK
     if not cached:
-        return HTMLResponse("<h1>Veriler hazırlanıyor...</h1>")
+        fetch_all_matches()
+        cached = cache_manager.get_matches_cache()
+
+        if not cached:
+            return HTMLResponse("<h1>Veriler hazırlanıyor, 10-20 sn sonra yenileyin</h1>")
 
     return templates.TemplateResponse(
         "dashboard.html",
@@ -144,17 +148,9 @@ def dashboard(request: Request, session_id: str = Cookie(None)):
             "matches": cached["matches"],
             "picks": cached.get("picks", []),
             "user": user,
-            "is_premium": is_premium,
+            "is_premium": is_premium
         }
     )
-
-# =====================
-# REFRESH (CRON / MANUAL)
-# =====================
-@app.get("/refresh")
-def refresh():
-    fetch_all_matches()
-    return {"status": "ok", "message": "Cache güncellendi"}
 
 # =====================
 # STARTUP
