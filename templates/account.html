@@ -163,6 +163,23 @@
   <div class="account-card">
     <h2>⭐ Premium Üyelik</h2>
     
+    
+  {% if user.is_premium %}
+  <div class="account-card">
+    <h2>⭐ Premium Üyelik</h2>
+    
+    {% if user.lifetime_premium %}
+    <div class="info-row">
+      <span class="info-label">Üyelik Tipi</span>
+      <span class="info-value" style="color: #facc15; font-weight: bold; font-size: 18px;">
+        ♾️ ÖMÜRLÜK PREMIUM
+      </span>
+    </div>
+    
+    <div class="success-box">
+      ✓ Ömürlük premium üyeliğiniz aktif! Tüm özelliklere süresiz erişiminiz var.
+    </div>
+    {% else %}
     <div class="info-row">
       <span class="info-label">Premium Bitiş Tarihi</span>
       <span class="info-value" style="color: #22c55e; font-weight: bold;">
@@ -181,13 +198,14 @@
     <div class="warning-box">
       ⚠️ Premium üyeliğiniz yakında sona erecek! Kesintisiz erişim için yenileyin.
     </div>
-    <a href="/renew-premium" class="action-button">
+    <a href="/payment" class="action-button">
       🔄 Premium'u Yenile (299₺)
     </a>
     {% else %}
     <div class="success-box">
       ✓ Premium üyeliğiniz aktif! Tüm özelliklere erişiminiz var.
     </div>
+    {% endif %}
     {% endif %}
   </div>
   {% else %}
@@ -199,13 +217,13 @@
     </p>
     
     <ul style="list-style: none; padding: 0; margin-bottom: 20px;">
-      <li style="padding: 8px 0; color: #22c55e;">✓ CL-5 Büyük Lig-Portekiz-Hollanda ve Championship Tüm Maçları</li>
+      <li style="padding: 8px 0; color: #22c55e;">✓ CL-5 Büyük Lig-Portekiz-Hollanda-Brezilya ve Championship Tüm Maçları</li>
       <li style="padding: 8px 0; color: #22c55e;">✓ Günlük en iyi bahis önerileri</li>
       <li style="padding: 8px 0; color: #22c55e;">✓ Gelişmiş istatistik analizleri</li>
       <li style="padding: 8px 0; color: #22c55e;">✓ 7/24 güncel maç verileri</li>
     </ul>
     
-    <a href="/register" class="action-button">
+    <a href="/payment" class="action-button">
       ⭐ Premium Üye Ol (299₺/ay)
     </a>
   </div>
@@ -220,6 +238,15 @@
     </button>
   </div>
 </div>
+
+<footer style="text-align: center; padding: 30px 20px; margin-top: 40px; border-top: 1px solid #334155;">
+  <p style="opacity: 0.8; margin-bottom: 8px;">
+    © 2025 Ekinci Analiz - Premium Futbol Analiz Platformu
+  </p>
+  <p style="font-size: 14px; opacity: 0.7;">
+    Şikayet ve Öneriler: <a href="mailto:ekincianaliz@gmail.com" style="color: #38bdf8; text-decoration: none;">ekincianaliz@gmail.com</a>
+  </p>
+</footer>
 
 </body>
 </html>

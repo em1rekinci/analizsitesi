@@ -2,6 +2,9 @@ import sqlite3
 import secrets
 from datetime import datetime
 from pathlib import Path
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 class PaymentManager:
     """Havale/EFT ödeme yönetimi"""
@@ -11,6 +14,10 @@ class PaymentManager:
         self.upload_dir = Path(upload_dir)
         self.upload_dir.mkdir(parents=True, exist_ok=True)
         self._init_database()
+        
+        # Email ayarları
+        self.sender_email = "ekincianaliz@gmail.com"
+        self.sender_password = "your-app-password-here"  # Gmail App Password
     
     def _init_database(self):
         """Payments tablosunu oluştur"""
@@ -31,6 +38,7 @@ class PaymentManager:
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 approved_at TEXT,
                 approved_by TEXT,
+                rejection_reason TEXT,
                 FOREIGN KEY (user_id) REFERENCES users(id)
             )
         """)
@@ -39,31 +47,49 @@ class PaymentManager:
         conn.close()
         print("✅ Payments tablosu hazır")
     
+    def send_email(self, to_email, subject, body):
+        """Email gönder"""
+        try:
+            msg = MIMEMultipart()
+            msg['From'] = self.sender_email
+            msg['To'] = to_email
+            msg['Subject'] = subject
+            
+            msg.attach(MIMEText(body, 'html'))
+            
+            # Gmail SMTP
+            server = smtplib.SMTP('smtp.gmail.com', 587)
+            server.starttls()
+            server.login(self.sender_email, self.sender_password)
+            server.send_message(msg)
+            server.quit()
+            
+            print(f"✅ Email gönderildi: {to_email}")
+            return True
+        except Exception as e:
+            print(f"⚠️ Email gönderme hatası: {e}")
+            return False
+    
     def generate_payment_ref(self, user_id):
         """Benzersiz ödeme referans kodu oluştur"""
-        # Format: PM-USERID-RANDOM (örn: PM-5-A7B9C2)
         random_part = secrets.token_hex(3).upper()
         return f"PM-{user_id}-{random_part}"
     
     def create_payment(self, user_id, email, amount, sender_name, receipt_file, notes=""):
         """Yeni ödeme kaydı oluştur"""
         try:
-            # Referans kodu oluştur
             payment_ref = self.generate_payment_ref(user_id)
             
-            # Dosya adını oluştur
             file_extension = Path(receipt_file.filename).suffix
             receipt_filename = f"{payment_ref}{file_extension}"
             receipt_path = self.upload_dir / receipt_filename
             
-            # Dosyayı kaydet - FastAPI UploadFile için doğru yöntem
             import shutil
             with open(receipt_path, "wb") as buffer:
                 shutil.copyfileobj(receipt_file.file, buffer)
             
             print(f"💾 Dosya kaydedildi: {receipt_path}")
             
-            # Veritabanına kaydet
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
@@ -168,12 +194,11 @@ class PaymentManager:
             return []
     
     def approve_payment(self, payment_id, approved_by="admin"):
-        """Ödemeyi onayla ve kullanıcıyı premium yap"""
+        """Ödemeyi onayla"""
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
-            # Ödeme bilgilerini al
             cursor.execute("SELECT user_id, status FROM payments WHERE id = ?", (payment_id,))
             result = cursor.fetchone()
             
@@ -187,7 +212,6 @@ class PaymentManager:
                 conn.close()
                 return {"success": False, "error": "Bu ödeme zaten onaylanmış"}
             
-            # Ödemeyi onayla
             cursor.execute("""
                 UPDATE payments 
                 SET status = 'approved', approved_at = ?, approved_by = ?
@@ -205,21 +229,62 @@ class PaymentManager:
             return {"success": False, "error": str(e)}
     
     def reject_payment(self, payment_id, reason=""):
-        """Ödemeyi reddet"""
+        """Ödemeyi reddet ve kullanıcıya mail gönder"""
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
+            # Ödeme bilgilerini al
+            cursor.execute("SELECT email, payment_ref, amount FROM payments WHERE id = ?", (payment_id,))
+            result = cursor.fetchone()
+            
+            if not result:
+                conn.close()
+                return {"success": False, "error": "Ödeme bulunamadı"}
+            
+            user_email, payment_ref, amount = result
+            
+            # Ödemeyi reddet
             cursor.execute("""
                 UPDATE payments 
-                SET status = 'rejected', notes = ?
+                SET status = 'rejected', rejection_reason = ?
                 WHERE id = ?
-            """, (f"Reddedildi: {reason}", payment_id))
+            """, (reason, payment_id))
             
             conn.commit()
             conn.close()
             
-            print(f"✅ Ödeme reddedildi: {payment_id}")
+            # Email gönder
+            subject = "Ödemeniz Reddedildi - Ekinci Analiz"
+            body = f"""
+            <html>
+            <body style="font-family: Arial, sans-serif; background: #f3f4f6; padding: 20px;">
+                <div style="max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px;">
+                    <h2 style="color: #dc2626;">Ödeme Reddedildi</h2>
+                    <p>Sayın Kullanıcı,</p>
+                    <p>Ödemeniz aşağıdaki nedenle reddedilmiştir:</p>
+                    
+                    <div style="background: #fee2e2; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                        <strong>Referans:</strong> {payment_ref}<br>
+                        <strong>Tutar:</strong> {amount}₺<br>
+                        <strong>Ret Nedeni:</strong> {reason if reason else "Belirtilmedi"}
+                    </div>
+                    
+                    <p>Lütfen ödeme dekontunuzu kontrol ederek tekrar deneyiniz.</p>
+                    <p>Sorularınız için: <a href="mailto:ekincianaliz@gmail.com">ekincianaliz@gmail.com</a></p>
+                    
+                    <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;">
+                    <p style="font-size: 12px; color: #6b7280;">
+                        Ekinci Analiz - Premium Futbol Analiz Platformu
+                    </p>
+                </div>
+            </body>
+            </html>
+            """
+            
+            self.send_email(user_email, subject, body)
+            
+            print(f"✅ Ödeme reddedildi ve mail gönderildi: {payment_id}")
             return {"success": True}
             
         except Exception as e:

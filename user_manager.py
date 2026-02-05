@@ -24,6 +24,7 @@ class UserManager:
                 password_hash TEXT NOT NULL,
                 is_premium INTEGER DEFAULT 0,
                 premium_until TEXT,
+                lifetime_premium INTEGER DEFAULT 0,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 last_login TEXT
             )
@@ -40,6 +41,19 @@ class UserManager:
             )
         """)
         
+        # Redeem codes tablosu
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS redeem_codes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                code TEXT UNIQUE NOT NULL,
+                is_used INTEGER DEFAULT 0,
+                used_by INTEGER,
+                used_at TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (used_by) REFERENCES users(id)
+            )
+        """)
+        
         conn.commit()
         conn.close()
         print("✅ Veritabanı hazır")
@@ -48,7 +62,70 @@ class UserManager:
         """Şifreyi güvenli şekilde hashle"""
         return hashlib.sha256(password.encode()).hexdigest()
     
-    def register_user(self, email, password):
+    def create_redeem_code(self, code=None):
+        """Yeni redeem kodu oluştur"""
+        if not code:
+            code = "PREMIUM-" + secrets.token_hex(4).upper()
+        
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute("INSERT INTO redeem_codes (code) VALUES (?)", (code,))
+            conn.commit()
+            conn.close()
+            
+            print(f"✅ Redeem kodu oluşturuldu: {code}")
+            return {"success": True, "code": code}
+        except Exception as e:
+            print(f"⚠️ Redeem kodu oluşturma hatası: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def use_redeem_code(self, code, user_id):
+        """Redeem kodunu kullan ve kullanıcıyı ömürlük premium yap"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Kod var mı ve kullanılmamış mı kontrol et
+            cursor.execute("SELECT id, is_used FROM redeem_codes WHERE code = ?", (code,))
+            result = cursor.fetchone()
+            
+            if not result:
+                conn.close()
+                return {"success": False, "error": "Geçersiz kod"}
+            
+            code_id, is_used = result
+            
+            if is_used:
+                conn.close()
+                return {"success": False, "error": "Bu kod daha önce kullanılmış"}
+            
+            # Kodu kullanılmış olarak işaretle
+            cursor.execute("""
+                UPDATE redeem_codes 
+                SET is_used = 1, used_by = ?, used_at = ?
+                WHERE id = ?
+            """, (user_id, datetime.now().isoformat(), code_id))
+            
+            # Kullanıcıyı lifetime premium yap
+            cursor.execute("""
+                UPDATE users 
+                SET is_premium = 1, lifetime_premium = 1, premium_until = '2099-12-31'
+                WHERE id = ?
+            """, (user_id,))
+            
+            conn.commit()
+            conn.close()
+            
+            print(f"✅ Redeem kodu kullanıldı: {code} (User: {user_id})")
+            return {"success": True, "message": "Ömürlük premium aktif edildi!"}
+            
+        except Exception as e:
+            print(f"⚠️ Redeem kodu kullanma hatası: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def register_user(self, email, password, redeem_code=None):
         """Yeni kullanıcı kaydı"""
         try:
             conn = sqlite3.connect(self.db_path)
@@ -71,6 +148,12 @@ class UserManager:
             user_id = cursor.lastrowid
             conn.close()
             
+            # Redeem kodu varsa kullan
+            if redeem_code and redeem_code.strip():
+                redeem_result = self.use_redeem_code(redeem_code.strip(), user_id)
+                if not redeem_result["success"]:
+                    print(f"⚠️ Redeem kodu hatası: {redeem_result['error']}")
+            
             print(f"✅ Yeni kullanıcı: {email}")
             return {"success": True, "user_id": user_id}
             
@@ -86,7 +169,7 @@ class UserManager:
             
             password_hash = self._hash_password(password)
             cursor.execute(
-                "SELECT id, is_premium, premium_until FROM users WHERE email = ? AND password_hash = ?",
+                "SELECT id, is_premium, premium_until, lifetime_premium FROM users WHERE email = ? AND password_hash = ?",
                 (email, password_hash)
             )
             
@@ -96,7 +179,7 @@ class UserManager:
                 conn.close()
                 return {"success": False, "error": "E-posta veya şifre hatalı"}
             
-            user_id, is_premium, premium_until = result
+            user_id, is_premium, premium_until, lifetime_premium = result
             
             # Son giriş zamanını güncelle
             cursor.execute(
@@ -114,6 +197,7 @@ class UserManager:
                 "user_id": user_id,
                 "is_premium": bool(is_premium),
                 "premium_until": premium_until,
+                "lifetime_premium": bool(lifetime_premium),
                 "session_id": session_id
             }
             
@@ -150,7 +234,7 @@ class UserManager:
             
             cursor.execute("""
                 SELECT s.user_id, u.email, u.is_premium, u.premium_until, s.expires_at,
-                       u.created_at, u.last_login
+                       u.created_at, u.last_login, u.lifetime_premium
                 FROM sessions s
                 JOIN users u ON s.user_id = u.id
                 WHERE s.session_id = ?
@@ -162,7 +246,7 @@ class UserManager:
             if not result:
                 return None
             
-            user_id, email, is_premium, premium_until, expires_at, created_at, last_login = result
+            user_id, email, is_premium, premium_until, expires_at, created_at, last_login, lifetime_premium = result
             
             # Session süresi dolmuş mu?
             if datetime.fromisoformat(expires_at) < datetime.now():
@@ -174,6 +258,7 @@ class UserManager:
                 "email": email,
                 "is_premium": bool(is_premium),
                 "premium_until": premium_until,
+                "lifetime_premium": bool(lifetime_premium),
                 "created_at": created_at,
                 "last_login": last_login
             }
@@ -219,10 +304,14 @@ class UserManager:
         cursor.execute("SELECT COUNT(*) FROM users WHERE is_premium = 1")
         premium_users = cursor.fetchone()[0]
         
+        cursor.execute("SELECT COUNT(*) FROM users WHERE lifetime_premium = 1")
+        lifetime_users = cursor.fetchone()[0]
+        
         conn.close()
         
         return {
             "total_users": total_users,
             "premium_users": premium_users,
-            "free_users": total_users - premium_users
+            "free_users": total_users - premium_users,
+            "lifetime_premium_users": lifetime_users
         }

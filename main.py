@@ -241,11 +241,24 @@ def account_page(request: Request, session_id: str = Cookie(None)):
     if not user:
         return RedirectResponse(url="/login", status_code=303)
     
+    # Premium kalan gün hesapla
+    days_left = 0
+    if user["is_premium"] and user["premium_until"]:
+        try:
+            if user.get("lifetime_premium"):
+                days_left = 99999  # Lifetime için çok büyük sayı
+            else:
+                premium_date = datetime.fromisoformat(user["premium_until"])
+                days_left = max(0, (premium_date - datetime.now()).days)
+        except:
+            days_left = 0
+    
     return templates.TemplateResponse(
         "account.html",
         {
             "request": request,
-            "user": user
+            "user": user,
+            "days_left": days_left
         }
     )
 
@@ -258,7 +271,8 @@ async def register_submit(
     request: Request,
     email: str = Form(...),
     password: str = Form(...),
-    confirm_password: str = Form(...)
+    confirm_password: str = Form(...),
+    redeem_code: str = Form("")
 ):
     if password != confirm_password:
         return templates.TemplateResponse(
@@ -266,7 +280,7 @@ async def register_submit(
             {"request": request, "error": "Şifreler eşleşmiyor"}
         )
     
-    result = user_manager.register_user(email, password)
+    result = user_manager.register_user(email, password, redeem_code)
     
     if not result["success"]:
         return templates.TemplateResponse(
