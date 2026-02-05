@@ -130,6 +130,14 @@
     .refresh-btn:hover {
       background: #7dd3fc;
     }
+    
+    .premium-picks-lock {
+      text-align: center;
+      padding: 40px 20px;
+      background: #0f172a;
+      border-radius: 8px;
+      margin-top: 12px;
+    }
   </style>
 </head>
 <body>
@@ -220,6 +228,8 @@
   {% if picks and picks|length > 0 %}
   <div class="picks">
     <h2>🔥 Günün Oynanabilir Tercihleri</h2>
+    
+    {% if is_premium %}
     <ul>
       {% for p in picks %}
       <li>
@@ -227,11 +237,22 @@
       </li>
       {% endfor %}
     </ul>
+    {% else %}
+    <div class="premium-picks-lock">
+      <div style="font-size: 48px; margin-bottom: 16px;">🔒</div>
+      <h3 style="color: #facc15; margin-bottom: 12px;">Premium İçerik</h3>
+      <p style="opacity: 0.8; margin-bottom: 20px;">
+        Günün en iyi bahis önerilerini görmek için Premium üyeliğe geçin
+      </p>
+      <a href="/register" class="premium-btn" style="padding: 12px 24px; font-size: 14px; display: inline-block;">
+        ⭐ Premium Üye Ol
+      </a>
+    </div>
+    {% endif %}
   </div>
   {% endif %}
 
 {% else %}
-  <!-- MAÇ YOK DURUMU -->
   <div class="no-matches">
     <h2>⚽ Bugün Maç Yok</h2>
     <p>Seçili liglerde bugün oynanacak maç bulunmamaktadır.</p>
@@ -246,7 +267,6 @@ function toggleMenu() {
   dropdown.classList.toggle('show');
 }
 
-// Dışarı tıklanınca menüyü kapat
 document.addEventListener('click', function(event) {
   const userMenu = document.querySelector('.user-menu');
   if (!userMenu.contains(event.target)) {
@@ -254,7 +274,6 @@ document.addEventListener('click', function(event) {
   }
 });
 
-// Viewport meta tag kontrolü - yoksa ekle (mobile için)
 if (!document.querySelector('meta[name="viewport"]')) {
   const meta = document.createElement('meta');
   meta.name = 'viewport';

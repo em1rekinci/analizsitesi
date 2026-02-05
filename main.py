@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Request, Form, Cookie, UploadFile, File
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, FileResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 
@@ -13,9 +13,7 @@ from payment_manager import PaymentManager
 app = FastAPI()
 
 os.makedirs("uploads", exist_ok=True)
-
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
-
 
 # =====================
 # APP
@@ -30,7 +28,6 @@ API_KEY = os.getenv("FOOTBALL_API_KEY", "350b0fe840aa431d8e199a328ac5cd34")
 BASE_URL = "https://api.football-data.org/v4"
 HEADERS = {"X-Auth-Token": API_KEY}
 
-# Admin şifresi (değiştirin!)
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "34emr256.")
 
 # Managers
@@ -71,18 +68,11 @@ LEAGUE_WEIGHT = {
     "BSA": 1.00 
 }
 
-# =====================
-# HELPER: GET USER FROM COOKIE
-# =====================
 def get_current_user(session_id: str = None):
-    """Cookie'den kullanıcıyı al"""
     if not session_id:
         return None
     return user_manager.verify_session(session_id)
 
-# =====================
-# SAFE REQUEST
-# =====================
 def safe_request(url, params=None):
     try:
         r = requests.get(url, headers=HEADERS, params=params, timeout=30)
@@ -94,9 +84,6 @@ def safe_request(url, params=None):
         pass
     return {}
 
-# =====================
-# TEAM STATS
-# =====================
 def get_team_stats(team_id):
     if team_id in TEAM_CACHE:
         return TEAM_CACHE[team_id]
@@ -136,9 +123,6 @@ def get_team_stats(team_id):
     TEAM_CACHE[team_id] = stats
     return stats
 
-# =====================
-# PERCENT ENGINE
-# =====================
 def clamp(x, low=5, high=95):
     return max(low, min(high, x))
 
@@ -172,9 +156,6 @@ def fh_probs(hs, as_):
     o = clamp((hs["fh15"] + as_["fh15"]) / 2, 5, 80)
     return {"FH15": round(o, 2)}
 
-# =====================
-# MARKETS
-# =====================
 def build_markets(match, picks, league_code):
     hs = get_team_stats(match["homeTeam"]["id"])
     as_ = get_team_stats(match["awayTeam"]["id"])
@@ -202,9 +183,6 @@ def build_markets(match, picks, league_code):
 
     return all_markets
 
-# =====================
-# FETCH ALL MATCHES (1 KERE)
-# =====================
 def fetch_all_matches():
     grouped = defaultdict(list)
     picks = []
@@ -223,8 +201,6 @@ def fetch_all_matches():
 
             m["time"] = dt.strftime("%H:%M")
             m["league"] = league
-            
-            # 🔥 FIX: MARKETS EKLENDI
             m["markets"] = build_markets(m, picks, code)
             
             grouped[league].append(m)
@@ -232,9 +208,6 @@ def fetch_all_matches():
     cache_manager.save_teams_cache({str(k): v for k, v in TEAM_CACHE.items()})
     cache_manager.save_matches_cache(grouped, picks)
 
-# =====================
-# DASHBOARD
-# =====================
 @app.get("/", response_class=HTMLResponse)
 @app.get("/dashboard", response_class=HTMLResponse)
 def dashboard(request: Request, session_id: str = Cookie(None)):
@@ -243,7 +216,6 @@ def dashboard(request: Request, session_id: str = Cookie(None)):
 
     cached = cache_manager.get_matches_cache()
 
-    # 🔥 CACHE YOKSA → İLK GİRİŞ → API ÇEK
     if not cached:
         fetch_all_matches()
         cached = cache_manager.get_matches_cache()
@@ -262,9 +234,6 @@ def dashboard(request: Request, session_id: str = Cookie(None)):
         }
     )
 
-# =====================
-# ACCOUNT PAGE
-# =====================
 @app.get("/account", response_class=HTMLResponse)
 def account_page(request: Request, session_id: str = Cookie(None)):
     user = get_current_user(session_id)
@@ -280,16 +249,10 @@ def account_page(request: Request, session_id: str = Cookie(None)):
         }
     )
 
-# =====================
-# REGISTER (GET)
-# =====================
 @app.get("/register", response_class=HTMLResponse)
 def register_page(request: Request):
     return templates.TemplateResponse("register.html", {"request": request})
 
-# =====================
-# REGISTER (POST)
-# =====================
 @app.post("/register", response_class=HTMLResponse)
 async def register_submit(
     request: Request,
@@ -297,15 +260,13 @@ async def register_submit(
     password: str = Form(...),
     confirm_password: str = Form(...)
 ):
-    # Şifre eşleşme kontrolü
     if password != confirm_password:
         return templates.TemplateResponse(
             "register.html",
             {"request": request, "error": "Şifreler eşleşmiyor"}
         )
     
-    # Kullanıcı oluştur
-    result = user_manager.create_user(email, password)
+    result = user_manager.register_user(email, password)
     
     if not result["success"]:
         return templates.TemplateResponse(
@@ -313,7 +274,6 @@ async def register_submit(
             {"request": request, "error": result["error"]}
         )
     
-    # Otomatik giriş yap
     login_result = user_manager.login_user(email, password)
     
     if login_result["success"]:
@@ -329,16 +289,10 @@ async def register_submit(
         {"request": request, "error": "Kayıt başarılı ama giriş yapılamadı"}
     )
 
-# =====================
-# LOGIN (GET)
-# =====================
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
     return templates.TemplateResponse("login_page.html", {"request": request})
 
-# =====================
-# LOGIN (POST)
-# =====================
 @app.post("/login", response_class=HTMLResponse)
 async def login_submit(
     request: Request,
@@ -357,9 +311,6 @@ async def login_submit(
     response.set_cookie(key="session_id", value=result["session_id"], httponly=True)
     return response
 
-# =====================
-# LOGOUT
-# =====================
 @app.get("/logout")
 def logout(session_id: str = Cookie(None)):
     if session_id:
@@ -369,9 +320,6 @@ def logout(session_id: str = Cookie(None)):
     response.delete_cookie("session_id")
     return response
 
-# =====================
-# PAYMENT PAGE (Havale/EFT)
-# =====================
 @app.get("/payment", response_class=HTMLResponse)
 def payment_page(request: Request, session_id: str = Cookie(None)):
     user = get_current_user(session_id)
@@ -379,7 +327,6 @@ def payment_page(request: Request, session_id: str = Cookie(None)):
     if not user:
         return RedirectResponse(url="/login", status_code=303)
     
-    # Referans kodu oluştur
     payment_ref = payment_manager.generate_payment_ref(user["user_id"])
     
     return templates.TemplateResponse(
@@ -391,9 +338,6 @@ def payment_page(request: Request, session_id: str = Cookie(None)):
         }
     )
 
-# =====================
-# SUBMIT PAYMENT (Dekont Yükle)
-# =====================
 @app.post("/submit-payment")
 async def submit_payment(
     request: Request,
@@ -409,11 +353,9 @@ async def submit_payment(
     if not user:
         return JSONResponse({"success": False, "error": "Giriş yapmanız gerekiyor"})
     
-    # Dosya boyutu kontrolü (5MB)
     if receipt.size > 5 * 1024 * 1024:
         return JSONResponse({"success": False, "error": "Dosya çok büyük (max 5MB)"})
     
-    # Ödeme kaydı oluştur
     result = payment_manager.create_payment(
         user_id=user["user_id"],
         email=user["email"],
@@ -428,9 +370,6 @@ async def submit_payment(
     else:
         return JSONResponse({"success": False, "error": result["error"]})
 
-# =====================
-# PAYMENT PENDING PAGE
-# =====================
 @app.get("/payment-pending", response_class=HTMLResponse)
 def payment_pending_page(request: Request, session_id: str = Cookie(None)):
     user = get_current_user(session_id)
@@ -448,12 +387,8 @@ def payment_pending_page(request: Request, session_id: str = Cookie(None)):
         }
     )
 
-# =====================
-# ADMIN PANEL
-# =====================
 @app.get("/admin", response_class=HTMLResponse)
 def admin_panel(request: Request, admin_password: str = None):
-    # Basit şifre kontrolü (gerçek projede daha güvenli olmalı)
     if admin_password != ADMIN_PASSWORD:
         return HTMLResponse("""
             <html>
@@ -469,13 +404,11 @@ def admin_panel(request: Request, admin_password: str = None):
             </html>
         """)
     
-    # İstatistikler
     user_stats = user_manager.get_user_stats()
     payment_stats = payment_manager.get_payment_stats()
     
     stats = {**user_stats, **payment_stats}
     
-    # Bekleyen ve onaylanan ödemeler
     pending_payments = payment_manager.get_pending_payments()
     approved_payments = payment_manager.get_approved_payments(limit=10)
     
@@ -489,26 +422,18 @@ def admin_panel(request: Request, admin_password: str = None):
         }
     )
 
-# =====================
-# ADMIN: APPROVE PAYMENT
-# =====================
 @app.post("/admin/approve-payment/{payment_id}")
 async def admin_approve_payment(payment_id: int):
-    # Ödemeyi onayla
     result = payment_manager.approve_payment(payment_id)
     
     if not result["success"]:
         return JSONResponse({"success": False, "error": result["error"]})
     
-    # Kullanıcıyı premium yap
     user_id = result["user_id"]
     user_manager.activate_premium(user_id, months=1)
     
     return JSONResponse({"success": True})
 
-# =====================
-# ADMIN: REJECT PAYMENT
-# =====================
 @app.post("/admin/reject-payment/{payment_id}")
 async def admin_reject_payment(payment_id: int, request: Request):
     body = await request.json()
@@ -517,19 +442,13 @@ async def admin_reject_payment(payment_id: int, request: Request):
     result = payment_manager.reject_payment(payment_id, reason)
     return JSONResponse(result)
 
-# =====================
-# REFRESH
-# =====================
 @app.get("/refresh", response_class=HTMLResponse)
 def refresh_data(request: Request, session_id: str = Cookie(None)):
     user = get_current_user(session_id)
     is_premium = user["is_premium"] if user else False
     
     try:
-        # API'den yeni veri çek ve cache'e kaydet
         fetch_all_matches()
-        
-        # Cache'den oku
         cached = cache_manager.get_matches_cache()
         
         if not cached:
@@ -550,9 +469,6 @@ def refresh_data(request: Request, session_id: str = Cookie(None)):
         traceback.print_exc()
         return HTMLResponse(f"<h1>Hata:</h1><pre>{str(e)}</pre>")
 
-# =====================
-# HEALTH
-# =====================
 @app.get("/health")
 def health_check():
     try:
@@ -573,9 +489,6 @@ def health_check():
     except Exception as e:
         return {"status": "unhealthy", "error": str(e)}
 
-# =====================
-# STARTUP
-# =====================
 @app.on_event("startup")
 async def startup_event():
     print("🚀 Uygulama başlatılıyor...")
