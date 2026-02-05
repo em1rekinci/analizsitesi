@@ -17,7 +17,7 @@ class PaymentManager:
         
         # Email ayarları
         self.sender_email = "ekincianaliz@gmail.com"
-        self.sender_password = "your-app-password-here"  # Gmail App Password
+        self.sender_password = "yosy nqsh vkck nnzx"  # Gmail App Password
     
     def _init_database(self):
         """Payments tablosunu oluştur"""
