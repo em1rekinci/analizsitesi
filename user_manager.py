@@ -2,10 +2,12 @@ import sqlite3
 import hashlib
 import secrets
 from datetime import datetime, timedelta
-from pathlib import Path
 
 class UserManager:
     """Kullanıcı kayıt, giriş ve premium yönetimi"""
+    
+    # SONSUZ KULLANIM İÇİN SABİT REDEEM KODU
+    MASTER_REDEEM_CODE = "socrates1907"
     
     def __init__(self, db_path="users.db"):
         self.db_path = db_path
@@ -16,7 +18,7 @@ class UserManager:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
-        # Kullanıcılar tablosu
+        # Kullanıcılar tablosu - lifetime_premium eklendi
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -41,19 +43,6 @@ class UserManager:
             )
         """)
         
-        # Redeem codes tablosu
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS redeem_codes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                code TEXT UNIQUE NOT NULL,
-                is_used INTEGER DEFAULT 0,
-                used_by INTEGER,
-                used_at TEXT,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (used_by) REFERENCES users(id)
-            )
-        """)
-        
         conn.commit()
         conn.close()
         print("✅ Veritabanı hazır")
@@ -62,51 +51,15 @@ class UserManager:
         """Şifreyi güvenli şekilde hashle"""
         return hashlib.sha256(password.encode()).hexdigest()
     
-    def create_redeem_code(self, code=None):
-        """Yeni redeem kodu oluştur"""
-        if not code:
-            code = "PREMIUM-" + secrets.token_hex(4).upper()
+    def use_redeem_code(self, code, user_id):
+        """Redeem kodunu kontrol et ve kullanıcıyı ömürlük premium yap"""
+        # Sadece master kodu kabul et
+        if code.upper().strip() != self.MASTER_REDEEM_CODE:
+            return {"success": False, "error": "Geçersiz kod"}
         
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
-            
-            cursor.execute("INSERT INTO redeem_codes (code) VALUES (?)", (code,))
-            conn.commit()
-            conn.close()
-            
-            print(f"✅ Redeem kodu oluşturuldu: {code}")
-            return {"success": True, "code": code}
-        except Exception as e:
-            print(f"⚠️ Redeem kodu oluşturma hatası: {e}")
-            return {"success": False, "error": str(e)}
-    
-    def use_redeem_code(self, code, user_id):
-        """Redeem kodunu kullan ve kullanıcıyı ömürlük premium yap"""
-        try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            
-            # Kod var mı ve kullanılmamış mı kontrol et
-            cursor.execute("SELECT id, is_used FROM redeem_codes WHERE code = ?", (code,))
-            result = cursor.fetchone()
-            
-            if not result:
-                conn.close()
-                return {"success": False, "error": "Geçersiz kod"}
-            
-            code_id, is_used = result
-            
-            if is_used:
-                conn.close()
-                return {"success": False, "error": "Bu kod daha önce kullanılmış"}
-            
-            # Kodu kullanılmış olarak işaretle
-            cursor.execute("""
-                UPDATE redeem_codes 
-                SET is_used = 1, used_by = ?, used_at = ?
-                WHERE id = ?
-            """, (user_id, datetime.now().isoformat(), code_id))
             
             # Kullanıcıyı lifetime premium yap
             cursor.execute("""
@@ -149,13 +102,19 @@ class UserManager:
             conn.close()
             
             # Redeem kodu varsa kullan
+            has_redeem = False
             if redeem_code and redeem_code.strip():
                 redeem_result = self.use_redeem_code(redeem_code.strip(), user_id)
-                if not redeem_result["success"]:
-                    print(f"⚠️ Redeem kodu hatası: {redeem_result['error']}")
+                if redeem_result["success"]:
+                    has_redeem = True
+                    print(f"✅ Redeem kod kullanıldı - lifetime premium")
             
             print(f"✅ Yeni kullanıcı: {email}")
-            return {"success": True, "user_id": user_id}
+            return {
+                "success": True, 
+                "user_id": user_id,
+                "has_redeem": has_redeem  # Bu bilgi login için önemli
+            }
             
         except Exception as e:
             print(f"⚠️ Kayıt hatası: {e}")
@@ -208,7 +167,7 @@ class UserManager:
     def create_session(self, user_id):
         """Kullanıcı için session oluştur"""
         session_id = secrets.token_urlsafe(32)
-        expires_at = datetime.now() + timedelta(days=7)  # 7 gün geçerli
+        expires_at = datetime.now() + timedelta(days=7)
         
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()

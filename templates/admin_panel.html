@@ -354,7 +354,7 @@ function rejectPayment(paymentId) {
   fetch(`/admin/reject-payment/${paymentId}`, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({reason: reason})
+    body: JSON.stringify({reason: reason || ""})
   })
   .then(res => res.json())
   .then(data => {

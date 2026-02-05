@@ -17,7 +17,7 @@ class PaymentManager:
         
         # Email ayarları
         self.sender_email = "ekincianaliz@gmail.com"
-        self.sender_password = "yosy nqsh vkck nnzx"  # Gmail App Password
+        self.sender_password = "yosynqshvkcknnzx"  # Gmail App Password
     
     def _init_database(self):
         """Payments tablosunu oluştur"""
@@ -249,46 +249,56 @@ class PaymentManager:
                 UPDATE payments 
                 SET status = 'rejected', rejection_reason = ?
                 WHERE id = ?
-            """, (reason, payment_id))
+            """, (reason if reason else "Belirtilmedi", payment_id))
             
             conn.commit()
             conn.close()
             
-            # Email gönder
-            subject = "Ödemeniz Reddedildi - Ekinci Analiz"
-            body = f"""
-            <html>
-            <body style="font-family: Arial, sans-serif; background: #f3f4f6; padding: 20px;">
-                <div style="max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px;">
-                    <h2 style="color: #dc2626;">Ödeme Reddedildi</h2>
-                    <p>Sayın Kullanıcı,</p>
-                    <p>Ödemeniz aşağıdaki nedenle reddedilmiştir:</p>
-                    
-                    <div style="background: #fee2e2; padding: 15px; border-radius: 8px; margin: 20px 0;">
-                        <strong>Referans:</strong> {payment_ref}<br>
-                        <strong>Tutar:</strong> {amount}₺<br>
-                        <strong>Ret Nedeni:</strong> {reason if reason else "Belirtilmedi"}
+            print(f"✅ Ödeme reddedildi: {payment_id}")
+            
+            # Email göndermeyi dene (başarısız olsa bile rejection geçerli)
+            try:
+                subject = "Ödemeniz Reddedildi - Ekinci Analiz"
+                body = f"""
+                <html>
+                <body style="font-family: Arial, sans-serif; background: #f3f4f6; padding: 20px;">
+                    <div style="max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px;">
+                        <h2 style="color: #dc2626;">Ödeme Reddedildi</h2>
+                        <p>Sayın Kullanıcı,</p>
+                        <p>Ödemeniz aşağıdaki nedenle reddedilmiştir:</p>
+                        
+                        <div style="background: #fee2e2; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                            <strong>Referans:</strong> {payment_ref}<br>
+                            <strong>Tutar:</strong> {amount}₺<br>
+                            <strong>Ret Nedeni:</strong> {reason if reason else "Belirtilmedi"}
+                        </div>
+                        
+                        <p>Lütfen ödeme dekontunuzu kontrol ederek tekrar deneyiniz.</p>
+                        <p>Sorularınız için: <a href="mailto:ekincianaliz@gmail.com">ekincianaliz@gmail.com</a></p>
+                        
+                        <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;">
+                        <p style="font-size: 12px; color: #6b7280;">
+                            Ekinci Analiz - Premium Futbol Analiz Platformu
+                        </p>
                     </div>
-                    
-                    <p>Lütfen ödeme dekontunuzu kontrol ederek tekrar deneyiniz.</p>
-                    <p>Sorularınız için: <a href="mailto:ekincianaliz@gmail.com">ekincianaliz@gmail.com</a></p>
-                    
-                    <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;">
-                    <p style="font-size: 12px; color: #6b7280;">
-                        Ekinci Analiz - Premium Futbol Analiz Platformu
-                    </p>
-                </div>
-            </body>
-            </html>
-            """
+                </body>
+                </html>
+                """
+                
+                email_result = self.send_email(user_email, subject, body)
+                if email_result:
+                    print(f"✅ Reddetme maili gönderildi: {user_email}")
+                else:
+                    print(f"⚠️ Mail gönderilemedi ama ödeme reddedildi: {user_email}")
+            except Exception as email_error:
+                print(f"⚠️ Email hatası (ödeme yine de reddedildi): {email_error}")
             
-            self.send_email(user_email, subject, body)
-            
-            print(f"✅ Ödeme reddedildi ve mail gönderildi: {payment_id}")
             return {"success": True}
             
         except Exception as e:
             print(f"⚠️ Ödeme reddetme hatası: {e}")
+            import traceback
+            traceback.print_exc()
             return {"success": False, "error": str(e)}
     
     def get_user_payments(self, user_id):

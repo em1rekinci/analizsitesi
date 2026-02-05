@@ -209,7 +209,9 @@
       <div class="cell {% if not match.is_free and not is_premium %}blur{% endif %}">
         {{ match.markets[key] }}%
         {% if match.markets.best == key and match.markets.best_value >= 60 %}
-          <span class="star">⭐</span>
+          {% if match.is_free or is_premium %}
+            <span class="star">⭐</span>
+          {% endif %}
         {% endif %}
       </div>
       {% endfor %}

@@ -288,13 +288,18 @@ async def register_submit(
             {"request": request, "error": result["error"]}
         )
     
+    # Otomatik giriş yap
     login_result = user_manager.login_user(email, password)
     
     if login_result["success"]:
-        response = templates.TemplateResponse(
-            "register.html",
-            {"request": request, "success": True}
-        )
+        # Redeem kod varsa dashboard'a, yoksa payment'a yönlendir
+        if result.get("has_redeem"):
+            # Redeem kod ile premium oldu - direkt dashboard
+            response = RedirectResponse(url="/dashboard", status_code=303)
+        else:
+            # Normal kayıt - ödeme sayfasına yönlendir
+            response = RedirectResponse(url="/payment", status_code=303)
+        
         response.set_cookie(key="session_id", value=login_result["session_id"], httponly=True)
         return response
     
