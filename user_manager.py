@@ -7,7 +7,7 @@ class UserManager:
     """Kullanıcı kayıt, giriş ve premium yönetimi"""
     
     # SONSUZ KULLANIM İÇİN SABİT REDEEM KODU
-    MASTER_REDEEM_CODE = "socrates1907"
+    MASTER_REDEEM_CODE = "SOCRATES1907"
     
     def __init__(self, db_path="users.db"):
         self.db_path = db_path
