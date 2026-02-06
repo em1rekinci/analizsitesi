@@ -162,10 +162,12 @@ def kg_probs(hs, as_):
     o = (hs["kg"] + as_["kg"]) / 2
     return {"KG": round(o, 2)}
 
+
 def fh_probs(hs, as_):
     # v6.py hesaplama mantığı
     o = (hs["fh15"] + as_["fh15"]) / 2
     return {"FH15": round(o, 2)}
+
 
 def build_markets(match, picks, league_code):
     hs = get_team_stats(match["homeTeam"]["id"])
