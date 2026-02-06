@@ -109,7 +109,8 @@ def get_team_stats(team_id):
         g_against += og
         if tg + og >= 3: over25 += 1
         if tg > 0 and og > 0: kg += 1
-        if ht and ht["home"] + ht["away"] >= 2: fh15 += 1
+        if ht and ht["home"] is not None and ht["away"] is not None:
+            if (ht["home"] + ht["away"]) >= 2: fh15 += 1
 
     total = len(data) or 1
     stats = {
