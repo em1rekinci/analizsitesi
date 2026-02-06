@@ -204,3 +204,43 @@ class PaymentManager:
         except Exception as e:
             print(f"⚠️ Reddetme hatası: {e}")
             return {"success": False, "error": str(e)}
+
+    # =====================
+    # PAYMENT STATS
+    # =====================
+    def get_payment_stats(self):
+        """Ödeme istatistikleri"""
+        try:
+            with get_connection() as conn:
+                pending_count = conn.execute(
+                    text("SELECT COUNT(*) FROM payments WHERE status = 'pending'")
+                ).fetchone()[0]
+
+                approved_count = conn.execute(
+                    text("SELECT COUNT(*) FROM payments WHERE status = 'approved'")
+                ).fetchone()[0]
+
+                rejected_count = conn.execute(
+                    text("SELECT COUNT(*) FROM payments WHERE status = 'rejected'")
+                ).fetchone()[0]
+
+                total_revenue = conn.execute(
+                    text("SELECT SUM(amount) FROM payments WHERE status = 'approved'")
+                ).fetchone()[0] or 0
+
+            return {
+                "pending_payments": pending_count,
+                "approved_payments": approved_count,
+                "rejected_payments": rejected_count,
+                "total_revenue": int(total_revenue)
+            }
+
+        except Exception as e:
+            print(f"⚠️ Ödeme istatistik hatası: {e}")
+            return {
+                "pending_payments": 0,
+                "approved_payments": 0,
+                "rejected_payments": 0,
+                "total_revenue": 0
+            }
+
