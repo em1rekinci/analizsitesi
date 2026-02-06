@@ -123,6 +123,9 @@ def get_team_stats(team_id):
     TEAM_CACHE[team_id] = stats
     return stats
 
+def clamp(x, low=5, high=95):
+    return max(low, min(high, x))
+
 def ms_probs(hs, as_):
     # v6.py hesaplama mantığı
     attack_diff = hs["avg_scored"] - as_["avg_scored"]
