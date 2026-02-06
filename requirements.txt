@@ -3,3 +3,5 @@ uvicorn
 requests
 python-multipart
 jinja2
+sqlalchemy
+psycopg2-binary

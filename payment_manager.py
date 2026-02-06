@@ -1,51 +1,22 @@
-import sqlite3
 import secrets
 from datetime import datetime
 from pathlib import Path
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from sqlalchemy import text
+from db_manager import get_connection
 
 class PaymentManager:
-    """Havale/EFT ödeme yönetimi"""
+    """Havale/EFT ödeme yönetimi - PostgreSQL uyumlu"""
     
-    def __init__(self, db_path="users.db", upload_dir="uploads/receipts"):
-        self.db_path = db_path
+    def __init__(self, upload_dir="uploads/receipts"):
         self.upload_dir = Path(upload_dir)
         self.upload_dir.mkdir(parents=True, exist_ok=True)
-        self._init_database()
         
         # Email ayarları
         self.sender_email = "ekincianaliz@gmail.com"
-        self.sender_password = "yosynqshvkcknnzx"  # Gmail App Password
-    
-    def _init_database(self):
-        """Payments tablosunu oluştur"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS payments (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                email TEXT NOT NULL,
-                payment_ref TEXT UNIQUE NOT NULL,
-                amount REAL NOT NULL,
-                sender_name TEXT NOT NULL,
-                receipt_path TEXT NOT NULL,
-                notes TEXT,
-                status TEXT DEFAULT 'pending',
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                approved_at TEXT,
-                approved_by TEXT,
-                rejection_reason TEXT,
-                FOREIGN KEY (user_id) REFERENCES users(id)
-            )
-        """)
-        
-        conn.commit()
-        conn.close()
-        print("✅ Payments tablosu hazır")
+        self.sender_password = "yosynqshvkcknnzx"  # Gmail App Password buraya
     
     def send_email(self, to_email, subject, body):
         """Email gönder"""
@@ -90,17 +61,25 @@ class PaymentManager:
             
             print(f"💾 Dosya kaydedildi: {receipt_path}")
             
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            
-            cursor.execute("""
-                INSERT INTO payments (user_id, email, payment_ref, amount, sender_name, receipt_path, notes)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (user_id, email, payment_ref, amount, sender_name, str(receipt_path), notes))
-            
-            conn.commit()
-            payment_id = cursor.lastrowid
-            conn.close()
+            with get_connection() as conn:
+                result = conn.execute(
+                    text("""
+                        INSERT INTO payments (user_id, email, payment_ref, amount, sender_name, receipt_path, notes)
+                        VALUES (:uid, :email, :ref, :amount, :sender, :path, :notes)
+                        RETURNING id
+                    """),
+                    {
+                        "uid": user_id,
+                        "email": email,
+                        "ref": payment_ref,
+                        "amount": amount,
+                        "sender": sender_name,
+                        "path": str(receipt_path),
+                        "notes": notes
+                    }
+                )
+                payment_id = result.fetchone()[0]
+                conn.commit()
             
             print(f"✅ Yeni ödeme kaydı: {payment_ref}")
             return {
@@ -118,19 +97,19 @@ class PaymentManager:
     def get_pending_payments(self):
         """Bekleyen ödemeleri getir"""
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            
-            cursor.execute("""
-                SELECT id, user_id, email, payment_ref, amount, sender_name, 
-                       receipt_path, notes, status, created_at
-                FROM payments
-                WHERE status = 'pending'
-                ORDER BY created_at DESC
-            """)
+            with get_connection() as conn:
+                results = conn.execute(
+                    text("""
+                        SELECT id, user_id, email, payment_ref, amount, sender_name, 
+                               receipt_path, notes, status, created_at
+                        FROM payments
+                        WHERE status = 'pending'
+                        ORDER BY created_at DESC
+                    """)
+                ).fetchall()
             
             payments = []
-            for row in cursor.fetchall():
+            for row in results:
                 payments.append({
                     "id": row[0],
                     "user_id": row[1],
@@ -143,10 +122,9 @@ class PaymentManager:
                     "notes": row[7],
                     "status": row[8],
                     "status_text": "Beklemede",
-                    "created_at": row[9]
+                    "created_at": str(row[9])
                 })
             
-            conn.close()
             return payments
             
         except Exception as e:
@@ -156,20 +134,21 @@ class PaymentManager:
     def get_approved_payments(self, limit=20):
         """Onaylanan ödemeleri getir"""
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            
-            cursor.execute("""
-                SELECT id, user_id, email, payment_ref, amount, sender_name, 
-                       receipt_path, notes, status, created_at, approved_at
-                FROM payments
-                WHERE status = 'approved'
-                ORDER BY approved_at DESC
-                LIMIT ?
-            """, (limit,))
+            with get_connection() as conn:
+                results = conn.execute(
+                    text("""
+                        SELECT id, user_id, email, payment_ref, amount, sender_name, 
+                               receipt_path, notes, status, created_at, approved_at
+                        FROM payments
+                        WHERE status = 'approved'
+                        ORDER BY approved_at DESC
+                        LIMIT :limit
+                    """),
+                    {"limit": limit}
+                ).fetchall()
             
             payments = []
-            for row in cursor.fetchall():
+            for row in results:
                 payments.append({
                     "id": row[0],
                     "user_id": row[1],
@@ -182,11 +161,10 @@ class PaymentManager:
                     "notes": row[7],
                     "status": row[8],
                     "status_text": "Onaylandı",
-                    "created_at": row[9],
-                    "approved_at": row[10]
+                    "created_at": str(row[9]),
+                    "approved_at": str(row[10])
                 })
             
-            conn.close()
             return payments
             
         except Exception as e:
@@ -196,30 +174,33 @@ class PaymentManager:
     def approve_payment(self, payment_id, approved_by="admin"):
         """Ödemeyi onayla"""
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            
-            cursor.execute("SELECT user_id, status FROM payments WHERE id = ?", (payment_id,))
-            result = cursor.fetchone()
-            
-            if not result:
-                conn.close()
-                return {"success": False, "error": "Ödeme bulunamadı"}
-            
-            user_id, current_status = result
-            
-            if current_status == "approved":
-                conn.close()
-                return {"success": False, "error": "Bu ödeme zaten onaylanmış"}
-            
-            cursor.execute("""
-                UPDATE payments 
-                SET status = 'approved', approved_at = ?, approved_by = ?
-                WHERE id = ?
-            """, (datetime.now().isoformat(), approved_by, payment_id))
-            
-            conn.commit()
-            conn.close()
+            with get_connection() as conn:
+                result = conn.execute(
+                    text("SELECT user_id, status FROM payments WHERE id = :pid"),
+                    {"pid": payment_id}
+                ).fetchone()
+                
+                if not result:
+                    return {"success": False, "error": "Ödeme bulunamadı"}
+                
+                user_id, current_status = result
+                
+                if current_status == "approved":
+                    return {"success": False, "error": "Bu ödeme zaten onaylanmış"}
+                
+                conn.execute(
+                    text("""
+                        UPDATE payments 
+                        SET status = 'approved', approved_at = :approved, approved_by = :by
+                        WHERE id = :pid
+                    """),
+                    {
+                        "approved": datetime.now().isoformat(),
+                        "by": approved_by,
+                        "pid": payment_id
+                    }
+                )
+                conn.commit()
             
             print(f"✅ Ödeme onaylandı: {payment_id}")
             return {"success": True, "user_id": user_id}
@@ -231,28 +212,28 @@ class PaymentManager:
     def reject_payment(self, payment_id, reason=""):
         """Ödemeyi reddet ve kullanıcıya mail gönder"""
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            
-            # Ödeme bilgilerini al
-            cursor.execute("SELECT email, payment_ref, amount FROM payments WHERE id = ?", (payment_id,))
-            result = cursor.fetchone()
-            
-            if not result:
-                conn.close()
-                return {"success": False, "error": "Ödeme bulunamadı"}
-            
-            user_email, payment_ref, amount = result
-            
-            # Ödemeyi reddet
-            cursor.execute("""
-                UPDATE payments 
-                SET status = 'rejected', rejection_reason = ?
-                WHERE id = ?
-            """, (reason if reason else "Belirtilmedi", payment_id))
-            
-            conn.commit()
-            conn.close()
+            with get_connection() as conn:
+                # Ödeme bilgilerini al
+                result = conn.execute(
+                    text("SELECT email, payment_ref, amount FROM payments WHERE id = :pid"),
+                    {"pid": payment_id}
+                ).fetchone()
+                
+                if not result:
+                    return {"success": False, "error": "Ödeme bulunamadı"}
+                
+                user_email, payment_ref, amount = result
+                
+                # Ödemeyi reddet
+                conn.execute(
+                    text("""
+                        UPDATE payments 
+                        SET status = 'rejected', rejection_reason = :reason
+                        WHERE id = :pid
+                    """),
+                    {"reason": reason if reason else "Belirtilmedi", "pid": payment_id}
+                )
+                conn.commit()
             
             print(f"✅ Ödeme reddedildi: {payment_id}")
             
@@ -304,18 +285,19 @@ class PaymentManager:
     def get_user_payments(self, user_id):
         """Kullanıcının tüm ödemelerini getir"""
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            
-            cursor.execute("""
-                SELECT payment_ref, amount, status, created_at, approved_at
-                FROM payments
-                WHERE user_id = ?
-                ORDER BY created_at DESC
-            """, (user_id,))
+            with get_connection() as conn:
+                results = conn.execute(
+                    text("""
+                        SELECT payment_ref, amount, status, created_at, approved_at
+                        FROM payments
+                        WHERE user_id = :uid
+                        ORDER BY created_at DESC
+                    """),
+                    {"uid": user_id}
+                ).fetchall()
             
             payments = []
-            for row in cursor.fetchall():
+            for row in results:
                 status_text = {
                     "pending": "Beklemede",
                     "approved": "Onaylandı",
@@ -327,11 +309,10 @@ class PaymentManager:
                     "amount": row[1],
                     "status": row[2],
                     "status_text": status_text,
-                    "created_at": row[3],
-                    "approved_at": row[4]
+                    "created_at": str(row[3]),
+                    "approved_at": str(row[4]) if row[4] else None
                 })
             
-            conn.close()
             return payments
             
         except Exception as e:
@@ -341,19 +322,18 @@ class PaymentManager:
     def get_payment_stats(self):
         """Ödeme istatistikleri"""
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            
-            cursor.execute("SELECT COUNT(*) FROM payments WHERE status = 'pending'")
-            pending_count = cursor.fetchone()[0]
-            
-            cursor.execute("SELECT COUNT(*) FROM payments WHERE status = 'approved'")
-            approved_count = cursor.fetchone()[0]
-            
-            cursor.execute("SELECT SUM(amount) FROM payments WHERE status = 'approved'")
-            total_revenue = cursor.fetchone()[0] or 0
-            
-            conn.close()
+            with get_connection() as conn:
+                pending_count = conn.execute(
+                    text("SELECT COUNT(*) FROM payments WHERE status = 'pending'")
+                ).fetchone()[0]
+                
+                approved_count = conn.execute(
+                    text("SELECT COUNT(*) FROM payments WHERE status = 'approved'")
+                ).fetchone()[0]
+                
+                total_revenue = conn.execute(
+                    text("SELECT SUM(amount) FROM payments WHERE status = 'approved'")
+                ).fetchone()[0] or 0
             
             return {
                 "pending_payments": pending_count,
