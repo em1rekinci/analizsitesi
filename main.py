@@ -88,98 +88,152 @@ def get_team_stats(team_id):
     if team_id in TEAM_CACHE:
         return TEAM_CACHE[team_id]
 
+    # Son 7 maç - daha güncel form
     data = safe_request(
         f"{BASE_URL}/teams/{team_id}/matches",
-        {"limit": 10, "status": "FINISHED"}
+        {"limit": 7, "status": "FINISHED"}
     ).get("matches", [])
 
-    g_for = g_against = over25 = kg = fh15 = 0
+    g_for = g_against = over25 = kg = fh15 = home = 0
+    total_weight = 0
 
-    for m in data:
+    for i, m in enumerate(data):
         ft = m["score"]["fullTime"]
         ht = m["score"]["halfTime"]
         if ft["home"] is None:
             continue
 
+        # Son 3 maça 2x ağırlık
+        weight = 2 if i < 3 else 1
+        total_weight += weight
+
         is_home = m["homeTeam"]["id"] == team_id
         tg = ft["home"] if is_home else ft["away"]
         og = ft["away"] if is_home else ft["home"]
 
-        g_for += tg
-        g_against += og
-        if tg + og >= 3: over25 += 1
-        if tg > 0 and og > 0: kg += 1
-        if ht and ht["home"] + ht["away"] >= 2: fh15 += 1
+        g_for += tg * weight
+        g_against += og * weight
 
-    total = len(data) or 1
+        if tg + og >= 3:
+            over25 += weight
+        if tg > 0 and og > 0:
+            kg += weight
+        if ht and ht["home"] is not None and (ht["home"] + ht["away"]) >= 2:
+            fh15 += weight
+        if is_home:
+            home += weight
+
+    total_weight = total_weight or 1
+
     stats = {
-        "avg_scored": round(g_for / total, 2),
-        "avg_conceded": round(g_against / total, 2),
-        "over25": round(over25 / total * 100, 2),
-        "kg": round(kg / total * 100, 2),
-        "fh15": round(fh15 / total * 100, 2)
+        "avg_scored": g_for / total_weight,
+        "avg_conceded": g_against / total_weight,
+        "over25": over25 / total_weight * 100,
+        "kg": kg / total_weight * 100,
+        "fh15": fh15 / total_weight * 100,
+        "home_rate": home / total_weight * 100
     }
 
     TEAM_CACHE[team_id] = stats
     return stats
 
-def clamp(x, low=5, high=95):
-    return max(low, min(high, x))
-
 def ms_probs(hs, as_):
-    diff = hs["avg_scored"] - as_["avg_scored"]
-    raw = 50 + diff * 9
-    ms1 = clamp(raw)
-    ms2 = clamp(100 - raw)
-    ms0 = clamp(100 - (ms1 + ms2), 8, 30)
+    """v7 gelişmiş MS hesabı - atak, savunma, tempo faktörlü"""
+    attack_diff = hs["avg_scored"] - as_["avg_scored"]
+    defence_diff = as_["avg_conceded"] - hs["avg_conceded"]
 
-    t = ms1 + ms0 + ms2
+    strength = attack_diff * 7 + defence_diff * 5
+    tempo = hs["avg_scored"] + as_["avg_scored"]
+
+    s1 = 1.0 + strength * 0.06
+    s2 = 1.0 - strength * 0.06
+
+    balance = abs(attack_diff) + abs(defence_diff)
+    sx = 1.15 - balance * 0.35 - tempo * 0.15
+
+    # Ev sahibi avantajı
+    s1 *= 1.18  # +18% ev sahibine
+    s2 *= 0.88  # -12% deplasmana
+    sx *= 0.95  # -5% beraberlik
+
+    s1 = max(0.15, s1)
+    s2 = max(0.15, s2)
+    sx = max(0.15, sx)
+
+    total = s1 + sx + s2
+
     return {
-        "MS1": round(ms1 / t * 100, 2),
-        "MS0": round(ms0 / t * 100, 2),
-        "MS2": round(ms2 / t * 100, 2)
+        "MS1": round(s1 / total * 100, 2),
+        "MS0": round(sx / total * 100, 2),
+        "MS2": round(s2 / total * 100, 2)
     }
 
 def over_probs(hs, as_):
+    """v7 gelişmiş Over hesabı - tempo bonusu"""
     base = (hs["over25"] + as_["over25"]) / 2
-    adj = abs(hs["avg_scored"] - as_["avg_scored"]) * 4
-    o = clamp(base + adj, 10, 85)
-    return {"O25": round(o, 2)}
+    
+    # Gol ortalaması bonusu
+    avg_goals = hs["avg_scored"] + hs["avg_conceded"] + as_["avg_scored"] + as_["avg_conceded"]
+    if avg_goals > 5.5:
+        base *= 1.12
+    elif avg_goals > 4.5:
+        base *= 1.06
+    
+    return {"O25": min(round(base, 2), 90)}
 
 def kg_probs(hs, as_):
-    gap = abs(hs["avg_scored"] - as_["avg_scored"])
+    """v7 gelişmiş KG hesabı - denge bonusu"""
     base = (hs["kg"] + as_["kg"]) / 2
-    o = clamp(base - gap * 6, 10, 75)
-    return {"KG": round(o, 2)}
+    
+    # Dengeli takımlar KG'de daha iyi
+    balance = abs(hs["avg_scored"] - as_["avg_scored"])
+    if balance < 0.5:
+        base *= 1.10
+    
+    return {"KG": min(round(base, 2), 85)}
 
 def fh_probs(hs, as_):
-    o = clamp((hs["fh15"] + as_["fh15"]) / 2, 5, 80)
-    return {"FH15": round(o, 2)}
+    """v7 gelişmiş FH hesabı - tempo bonusu"""
+    base = (hs["fh15"] + as_["fh15"]) / 2
+    
+    # Tempo bonusu
+    tempo = hs["avg_scored"] + as_["avg_scored"]
+    if tempo > 3.5:
+        base *= 1.08
+    
+    return {"FH15": min(round(base, 2), 85)}
 
 def build_markets(match, picks, league_code):
     hs = get_team_stats(match["homeTeam"]["id"])
     as_ = get_team_stats(match["awayTeam"]["id"])
 
+    # v7 formülleri
     ms = ms_probs(hs, as_)
     over = over_probs(hs, as_)
     kg = kg_probs(hs, as_)
     fh = fh_probs(hs, as_)
 
-    all_markets = {**ms, **over, **kg}
-    best_key, best_val = max(all_markets.items(), key=lambda x: x[1])
+    # Liga ağırlığı uygula
+    weight = LEAGUE_WEIGHT.get(league_code, 1.0)
+    
+    # Tüm piyasaları ağırlıklandır
+    all_markets = {}
+    for market, value in {**ms, **over, **kg, **fh}.items():
+        weighted_value = min(value * weight, 95)
+        all_markets[market] = round(weighted_value, 2)
+        
+        # %65+ olan her piyasa picks'e eklensin
+        if weighted_value >= 65:
+            picks.append({
+                "match": f"{match['homeTeam']['name']} - {match['awayTeam']['name']}",
+                "market": market,
+                "value": round(weighted_value, 2)
+            })
 
-    weighted = min(best_val * LEAGUE_WEIGHT.get(league_code, 1.0), 95)
-
-    if weighted >= 65:
-        picks.append({
-            "match": f"{match['homeTeam']['name']} - {match['awayTeam']['name']}",
-            "market": best_key,
-            "value": round(weighted, 2)
-        })
-
-    all_markets["FH15"] = fh["FH15"]
+    # En iyi piyasayı bul
+    best_key = max(all_markets.items(), key=lambda x: x[1])[0]
     all_markets["best"] = best_key
-    all_markets["best_value"] = round(weighted, 2)
+    all_markets["best_value"] = all_markets[best_key]
 
     return all_markets
 
@@ -511,6 +565,12 @@ def health_check():
 @app.on_event("startup")
 async def startup_event():
     print("🚀 Uygulama başlatılıyor...")
+    print("✨ v7 Gelişmiş Algoritma Aktif:")
+    print("   - Son 7 maç analizi")
+    print("   - Son 3 maça 2x ağırlık")
+    print("   - Ev sahibi avantajı +18%")
+    print("   - Dinamik tempo/denge bonusları")
+    print("   - Liga kalite ağırlıkları")
     
     try:
         teams_cache = cache_manager.get_teams_cache()
