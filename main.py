@@ -93,11 +93,14 @@ def get_team_stats(team_id):
         {"limit": 10, "status": "FINISHED"}
     ).get("matches", [])
 
-    g_for = g_against = over25 = kg = fh15 = 0
+    g_for = g_against = 0
+    over25 = kg = fh15 = 0
+    kg_games = fh_games = 0
 
     for m in data:
         ft = m["score"]["fullTime"]
-        ht = m["score"]["halfTime"]
+        ht = m["score"].get("halfTime")
+
         if ft["home"] is None:
             continue
 
@@ -107,21 +110,35 @@ def get_team_stats(team_id):
 
         g_for += tg
         g_against += og
-        if tg + og >= 3: over25 += 1
-        if tg > 0 and og > 0: kg += 1
-        if ht and ht["home"] + ht["away"] >= 2: fh15 += 1
+
+        # Over 2.5
+        if tg + og >= 3:
+            over25 += 1
+
+        # KG (sadece skor varsa)
+        kg_games += 1
+        if tg > 0 and og > 0:
+            kg += 1
+
+        # FH15 (sadece halfTime varsa)
+        if ht and ht["home"] is not None:
+            fh_games += 1
+            if (ht["home"] + ht["away"]) >= 2:
+                fh15 += 1
 
     total = len(data) or 1
+
     stats = {
-        "avg_scored": round(g_for / total, 2),
-        "avg_conceded": round(g_against / total, 2),
-        "over25": round(over25 / total * 100, 2),
-        "kg": round(kg / total * 100, 2),
-        "fh15": round(fh15 / total * 100, 2)
+        "avg_scored": g_for / total,
+        "avg_conceded": g_against / total,
+        "over25": over25 / total * 100,
+        "kg": (kg / kg_games * 100) if kg_games > 0 else 0,
+        "fh15": (fh15 / fh_games * 100) if fh_games > 0 else 0
     }
 
     TEAM_CACHE[team_id] = stats
     return stats
+
 
 def clamp(x, low=5, high=95):
     return max(low, min(high, x))
