@@ -406,7 +406,7 @@ def payment_pending_page(request: Request, session_id: str = Cookie(None)):
         }
     )
 
-@app.get("/admin", response_class=HTMLResponse)
+@app.get("/admin5600", response_class=HTMLResponse)
 def admin_panel(request: Request, admin_password: str = None):
     if admin_password != ADMIN_PASSWORD:
         return HTMLResponse("""
