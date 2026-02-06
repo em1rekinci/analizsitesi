@@ -30,10 +30,12 @@ HEADERS = {"X-Auth-Token": API_KEY}
 
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "34emr256.")
 
+# Managers
 cache_manager = CacheManager()
 user_manager = UserManager()
 payment_manager = PaymentManager()
 
+# Memory cache
 TEAM_CACHE = {}
 TR_TZ = timezone(timedelta(hours=3))
 
@@ -63,12 +65,9 @@ LEAGUE_WEIGHT = {
     "ELC": 1.01,
     "PPL": 1.00,
     "DED": 0.98,
-    "BSA": 1.00
+    "BSA": 1.00 
 }
 
-# =====================
-# HELPERS
-# =====================
 def get_current_user(session_id: str = None):
     if not session_id:
         return None
@@ -85,9 +84,6 @@ def safe_request(url, params=None):
         pass
     return {}
 
-# =====================
-# TEAM STATS
-# =====================
 def get_team_stats(team_id):
     if team_id in TEAM_CACHE:
         return TEAM_CACHE[team_id]
@@ -97,11 +93,11 @@ def get_team_stats(team_id):
         {"limit": 10, "status": "FINISHED"}
     ).get("matches", [])
 
-    g_for = g_against = over25 = kg = fh15 = home = 0
+    g_for = g_against = over25 = kg = fh15 = 0
 
     for m in data:
         ft = m["score"]["fullTime"]
-        ht = m["score"].get("halfTime")
+        ht = m["score"]["halfTime"]
         if ft["home"] is None:
             continue
 
@@ -111,33 +107,25 @@ def get_team_stats(team_id):
 
         g_for += tg
         g_against += og
-
-        if tg + og >= 3:
-            over25 += 1
-        if tg > 0 and og > 0:
-            kg += 1
-        if ht and ht["home"] is not None and (ht["home"] + ht["away"]) >= 2:
-            fh15 += 1
-        if is_home:
-            home += 1
+        if tg + og >= 3: over25 += 1
+        if tg > 0 and og > 0: kg += 1
+        if ht and ht["home"] + ht["away"] >= 2: fh15 += 1
 
     total = len(data) or 1
-
     stats = {
-        "avg_scored": g_for / total,
-        "avg_conceded": g_against / total,
-        "over25": over25 / total * 100,
-        "kg": kg / total * 100,
-        "fh15": fh15 / total * 100,
-        "home_rate": home / total * 100
+        "avg_scored": round(g_for / total, 2),
+        "avg_conceded": round(g_against / total, 2),
+        "over25": round(over25 / total * 100, 2),
+        "kg": round(kg / total * 100, 2),
+        "fh15": round(fh15 / total * 100, 2)
     }
 
     TEAM_CACHE[team_id] = stats
     return stats
 
-# =====================
-# ANALYSIS ENGINE
-# =====================
+def clamp(x, low=5, high=95):
+    return max(low, min(high, x))
+
 def ms_probs(hs, as_):
     attack_diff = hs["avg_scored"] - as_["avg_scored"]
     defence_diff = as_["avg_conceded"] - hs["avg_conceded"]
@@ -145,11 +133,15 @@ def ms_probs(hs, as_):
     strength = attack_diff * 7 + defence_diff * 5
     tempo = hs["avg_scored"] + as_["avg_scored"]
 
-    s1 = max(0.2, 1.0 + strength * 0.06)
-    s2 = max(0.2, 1.0 - strength * 0.06)
+    s1 = 1.0 + strength * 0.06
+    s2 = 1.0 - strength * 0.06
 
     balance = abs(attack_diff) + abs(defence_diff)
-    sx = max(0.2, 1.15 - balance * 0.35 - tempo * 0.15)
+    sx = 1.15 - balance * 0.35 - tempo * 0.15
+
+    s1 = max(0.2, s1)
+    s2 = max(0.2, s2)
+    sx = max(0.2, sx)
 
     total = s1 + sx + s2
 
@@ -161,25 +153,16 @@ def ms_probs(hs, as_):
 
 def over_probs(hs, as_):
     o = (hs["over25"] + as_["over25"]) / 2
-    return {"O25": round(o, 2)}
+    return {"Over 2.5": round(o, 2), "Under 2.5": round(100 - o, 2)}
 
-def fh_probs(hs, as_):
-    o = (hs["fh15"] + as_["fh15"]) / 2
-    return {"FH15": round(o, 2)}
 
 def kg_probs(hs, as_):
     o = (hs["kg"] + as_["kg"]) / 2
-    return {"KG": round(o, 2)}
+    return {"KG VAR": round(o, 2), "KG YOK": round(100 - o, 2)}
 
-def edge_score(ms, over, fh, kg):
-    return round(
-        max(ms.values()) * 0.3 +
-        max(over.values()) * 0.25 +
-        max(fh.values()) * 0.2 +
-        max(kg.values()) * 0.25,
-        2
-    )
-
+def fh_probs(hs, as_):
+    o = (hs["fh15"] + as_["fh15"]) / 2
+    return {"İY 1.5 ÜST": round(o, 2), "İY 1.5 ALT": round(100 - o, 2)}
 
 def build_markets(match, picks, league_code):
     hs = get_team_stats(match["homeTeam"]["id"])
@@ -187,35 +170,27 @@ def build_markets(match, picks, league_code):
 
     ms = ms_probs(hs, as_)
     over = over_probs(hs, as_)
-    fh = fh_probs(hs, as_)
     kg = kg_probs(hs, as_)
+    fh = fh_probs(hs, as_)
 
-    edge = edge_score(ms, over, fh, kg)
-    label = edge_label(edge)
+    all_markets = {**ms, **over, **kg}
+    best_key, best_val = max(all_markets.items(), key=lambda x: x[1])
 
-    markets = {**ms, **over, **fh, **kg}
-    best_key, best_val = max(markets.items(), key=lambda x: x[1])
+    weighted = min(best_val * LEAGUE_WEIGHT.get(league_code, 1.0), 95)
 
-    weighted = min(edge * LEAGUE_WEIGHT.get(league_code, 1.0), 95)
-
-    if weighted >= 60:
+    if weighted >= 65:
         picks.append({
             "match": f"{match['homeTeam']['name']} - {match['awayTeam']['name']}",
             "market": best_key,
-            "value": round(weighted, 2),
-            "label": label
+            "value": round(weighted, 2)
         })
 
-    markets["best"] = best_key
-    markets["best_value"] = round(weighted, 2)
-    markets["edge"] = edge
-    markets["label"] = label
+    all_markets["FH15"] = fh["FH15"]
+    all_markets["best"] = best_key
+    all_markets["best_value"] = round(weighted, 2)
 
-    return markets
+    return all_markets
 
-# =====================
-# MATCH FETCH
-# =====================
 def fetch_all_matches():
     grouped = defaultdict(list)
     picks = []
@@ -235,12 +210,11 @@ def fetch_all_matches():
             m["time"] = dt.strftime("%H:%M")
             m["league"] = league
             m["markets"] = build_markets(m, picks, code)
-
+            
             grouped[league].append(m)
 
     cache_manager.save_teams_cache({str(k): v for k, v in TEAM_CACHE.items()})
     cache_manager.save_matches_cache(grouped, picks)
-
 
 @app.get("/", response_class=HTMLResponse)
 @app.get("/dashboard", response_class=HTMLResponse)
