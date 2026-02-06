@@ -1,11 +1,11 @@
 import secrets
+import os
+import requests   # <-- BU SATIR EKSİKTİ
 from datetime import datetime
 from pathlib import Path
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 from sqlalchemy import text
 from db_manager import get_connection
+
 
 class PaymentManager:
     
