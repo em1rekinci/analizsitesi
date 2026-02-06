@@ -16,7 +16,7 @@ class PaymentManager:
         
         # Email ayarları
         self.sender_email = "ekincianaliz@gmail.com"
-        self.sender_password = "ajlq dsnb zgow hzea"  # Gmail App Password buraya
+        self.sender_password = "ajlqdsnbzgowhzea"  # Gmail App Password buraya
     
     def send_email(self, to_email, subject, body):
         """Email gönder"""
