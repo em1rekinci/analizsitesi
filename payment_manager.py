@@ -8,7 +8,7 @@ from sqlalchemy import text
 from db_manager import get_connection
 
 class PaymentManager:
-    """Havale/EFT ödeme yönetimi - PostgreSQL uyumlu"""
+    
     
     def __init__(self, upload_dir="uploads/receipts"):
         self.upload_dir = Path(upload_dir)
@@ -16,65 +16,48 @@ class PaymentManager:
         
         # Email ayarları - Environment variables'dan al
         import os
-        self.sender_email = os.getenv("GMAIL_EMAIL", "ekincianaliz@gmail.com")
-        self.sender_password = os.getenv("GMAIL_APP_PASSWORD", "vbsvusyqulikwfc")
-        print(f"📧 Email ayarları yüklendi: {self.sender_email}")
+        self.resend_api_key = os.getenv("RESEND_API_KEY")
+        self.email_from = "Payments <onboarding@resend.dev>"
+
+        if not self.resend_api_key:
+            print("⚠️ RESEND_API_KEY tanımlı değil")
+        else:
+            print("📧 Resend email sistemi aktif")
+
+
     
     def send_email(self, to_email, subject, body):
-        """Email gönder"""
-        try:
-            import socket
-            
-            # Network bağlantısı kontrolü
-            try:
-                print(f"🌐 DNS çözümleme testi: smtp.gmail.com")
-                ip = socket.gethostbyname('smtp.gmail.com')
-                print(f"✅ DNS başarılı: {ip}")
-            except Exception as dns_error:
-                print(f"❌ DNS hatası: {dns_error}")
-                return False
-            
-            msg = MIMEMultipart()
-            msg['From'] = self.sender_email
-            msg['To'] = to_email
-            msg['Subject'] = subject
-            
-            msg.attach(MIMEText(body, 'html'))
-            
-            # Gmail SMTP - Önce 587, sonra 465 dene
-            try:
-                print(f"📡 SMTP bağlantısı kuruluyor (Port 587)...")
-                server = smtplib.SMTP('smtp.gmail.com', 587, timeout=30)
-                server.set_debuglevel(1)  # Debug mode
-                server.starttls()
-                print(f"🔐 Login deneniyor: {self.sender_email}")
-                server.login(self.sender_email, self.sender_password)
-                print(f"📤 Email gönderiliyor...")
-                server.send_message(msg)
-                server.quit()
-                print(f"✅ Email gönderildi (Port 587): {to_email}")
-                return True
-            except Exception as e587:
-                print(f"⚠️ Port 587 başarısız: {e587}")
-                print(f"📡 Port 465 deneniyor (SSL)...")
-                
-                # Port 465 ile SSL bağlantısı dene
-                import smtplib
-                server = smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=30)
-                server.set_debuglevel(1)  # Debug mode
-                print(f"🔐 Login deneniyor: {self.sender_email}")
-                server.login(self.sender_email, self.sender_password)
-                print(f"📤 Email gönderiliyor...")
-                server.send_message(msg)
-                server.quit()
-                print(f"✅ Email gönderildi (Port 465): {to_email}")
-                return True
-                
-        except Exception as e:
-            print(f"❌ Email gönderme hatası: {e}")
-            import traceback
-            traceback.print_exc()
+        if not self.resend_api_key:
+            print("❌ Mail gönderilemedi: RESEND_API_KEY yok")
             return False
+
+        try:
+            response = requests.post(
+                "https://api.resend.com/emails",
+                headers={
+                    "Authorization": f"Bearer {self.resend_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "from": self.email_from,
+                    "to": [to_email],
+                    "subject": subject,
+                    "html": body,
+                },
+                timeout=15,
+            )
+
+            if response.status_code == 200:
+                print(f"✅ Mail gönderildi: {to_email}")
+                return True
+            else:
+                print(f"❌ Mail hatası ({response.status_code}): {response.text}")
+                return False
+
+        except Exception as e:
+            print(f"❌ Mail gönderme exception: {e}")
+            return False
+
     
     def generate_payment_ref(self, user_id):
         """Benzersiz ödeme referans kodu oluştur"""
