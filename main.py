@@ -221,19 +221,20 @@ def build_markets(match, picks, league_code):
     for market, value in {**ms, **over, **kg, **fh}.items():
         weighted_value = min(value * weight, 95)
         all_markets[market] = round(weighted_value, 2)
-        
-        # %65+ olan her piyasa picks'e eklensin
-        if weighted_value >= 65:
-            picks.append({
-                "match": f"{match['homeTeam']['name']} - {match['awayTeam']['name']}",
-                "market": market,
-                "value": round(weighted_value, 2)
-            })
 
     # En iyi piyasayı bul
-    best_key = max(all_markets.items(), key=lambda x: x[1])[0]
+    best_key, best_value = max(all_markets.items(), key=lambda x: x[1])
+    
+    # Sadece en yüksek piyasa %65+ ise picks'e ekle
+    if best_value >= 65:
+        picks.append({
+            "match": f"{match['homeTeam']['name']} - {match['awayTeam']['name']}",
+            "market": best_key,
+            "value": best_value
+        })
+
     all_markets["best"] = best_key
-    all_markets["best_value"] = all_markets[best_key]
+    all_markets["best_value"] = best_value
 
     return all_markets
 
