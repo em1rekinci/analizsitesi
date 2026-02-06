@@ -17,7 +17,7 @@ class PaymentManager:
         # Email ayarları - Environment variables'dan al
         import os
         self.resend_api_key = os.getenv("RESEND_API_KEY")
-        self.email_from = "Payments <onboarding@resend.dev>"
+        self.email_from = "Payments <ekincianaliz.online>"
 
         if not self.resend_api_key:
             print("⚠️ RESEND_API_KEY tanımlı değil")
