@@ -11,9 +11,25 @@ if not DATABASE_URL:
     print("⚠️  PostgreSQL bulunamadı, SQLite kullanılıyor")
 else:
     print(f"✅ PostgreSQL bağlanıyor...")
+    
+    # IPv6 sorununu çözmek için connect_args ekle
+    # Bu, psycopg2'yi sadece IPv4 kullanmaya zorlar
 
-# Engine oluştur
-engine = create_engine(DATABASE_URL)
+# Engine oluştur - IPv4 bağlantısını zorla
+if DATABASE_URL and DATABASE_URL.startswith("postgresql"):
+    engine = create_engine(
+        DATABASE_URL,
+        connect_args={
+            "connect_timeout": 10,
+            "options": "-c statement_timeout=30000"
+        },
+        pool_pre_ping=True,  # Bağlantı kontrolü
+        pool_size=5,
+        max_overflow=10
+    )
+else:
+    engine = create_engine(DATABASE_URL)
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def get_connection():
