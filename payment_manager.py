@@ -8,8 +8,6 @@ from db_manager import get_connection
 
 
 class PaymentManager:
-    """Havale/EFT ödeme yönetimi"""
-
     def __init__(self, upload_dir="uploads/receipts"):
         self.upload_dir = Path(upload_dir)
         self.upload_dir.mkdir(parents=True, exist_ok=True)
@@ -28,19 +26,17 @@ class PaymentManager:
                 "html": body
             })
 
-            print(f"✅ Email gönderildi (Resend): {to_email}")
+            print(f"✅ Email gönderildi: {to_email}")
             return True
-
         except Exception as e:
-            print(f"⚠️ Email gönderme hatası (Resend): {e}")
+            print(f"⚠️ Email hatası: {e}")
             return False
 
     # =====================
     # HELPERS
     # =====================
     def generate_payment_ref(self, user_id):
-        random_part = secrets.token_hex(3).upper()
-        return f"PM-{user_id}-{random_part}"
+        return f"PM-{user_id}-{secrets.token_hex(3).upper()}"
 
     # =====================
     # CREATE PAYMENT
@@ -49,20 +45,17 @@ class PaymentManager:
         try:
             payment_ref = self.generate_payment_ref(user_id)
 
-            file_extension = Path(receipt_file.filename).suffix
-            receipt_filename = f"{payment_ref}{file_extension}"
-            receipt_path = self.upload_dir / receipt_filename
-
+            receipt_path = self.upload_dir / f"{payment_ref}{Path(receipt_file.filename).suffix}"
             import shutil
-            with open(receipt_path, "wb") as buffer:
-                shutil.copyfileobj(receipt_file.file, buffer)
+            with open(receipt_path, "wb") as f:
+                shutil.copyfileobj(receipt_file.file, f)
 
             with get_connection() as conn:
-                result = conn.execute(
+                pid = conn.execute(
                     text("""
-                        INSERT INTO payments 
+                        INSERT INTO payments
                         (user_id, email, payment_ref, amount, sender_name, receipt_path, notes)
-                        VALUES (:uid, :email, :ref, :amount, :sender, :path, :notes)
+                        VALUES (:uid,:email,:ref,:amount,:sender,:path,:notes)
                         RETURNING id
                     """),
                     {
@@ -74,173 +67,172 @@ class PaymentManager:
                         "path": str(receipt_path),
                         "notes": notes
                     }
-                )
-                payment_id = result.fetchone()[0]
+                ).fetchone()[0]
                 conn.commit()
 
-            return {"success": True, "payment_id": payment_id, "payment_ref": payment_ref}
+            return {"success": True, "payment_id": pid}
 
         except Exception as e:
-            print(f"⚠️ Ödeme oluşturma hatası: {e}")
             return {"success": False, "error": str(e)}
+
+    # =====================
+    # GET PENDING PAYMENTS
+    # =====================
+    def get_pending_payments(self):
+        with get_connection() as conn:
+            rows = conn.execute(
+                text("""
+                    SELECT id,user_id,email,payment_ref,amount,sender_name,
+                           receipt_path,notes,status,created_at
+                    FROM payments
+                    WHERE status='pending'
+                    ORDER BY created_at DESC
+                """)
+            ).fetchall()
+
+        return [{
+            "id": r[0],
+            "user_id": r[1],
+            "email": r[2],
+            "payment_ref": r[3],
+            "amount": r[4],
+            "sender_name": r[5],
+            "receipt_path": r[6],
+            "receipt_url": f"/uploads/receipts/{Path(r[6]).name}",
+            "notes": r[7],
+            "status": r[8],
+            "created_at": str(r[9])
+        } for r in rows]
+
+    # =====================
+    # GET APPROVED PAYMENTS
+    # =====================
+    def get_approved_payments(self, limit=50):
+        with get_connection() as conn:
+            rows = conn.execute(
+                text("""
+                    SELECT id,user_id,email,payment_ref,amount,sender_name,
+                           receipt_path,notes,status,created_at,approved_at
+                    FROM payments
+                    WHERE status='approved'
+                    ORDER BY approved_at DESC
+                    LIMIT :limit
+                """),
+                {"limit": limit}
+            ).fetchall()
+
+        return [{
+            "id": r[0],
+            "user_id": r[1],
+            "email": r[2],
+            "payment_ref": r[3],
+            "amount": r[4],
+            "sender_name": r[5],
+            "receipt_path": r[6],
+            "receipt_url": f"/uploads/receipts/{Path(r[6]).name}",
+            "notes": r[7],
+            "status": r[8],
+            "created_at": str(r[9]),
+            "approved_at": str(r[10])
+        } for r in rows]
 
     # =====================
     # APPROVE PAYMENT + MAIL
     # =====================
     def approve_payment(self, payment_id, approved_by="admin"):
-        try:
-            with get_connection() as conn:
-                result = conn.execute(
-                    text("""
-                        SELECT user_id, email, payment_ref, amount, status
-                        FROM payments
-                        WHERE id = :pid
-                    """),
-                    {"pid": payment_id}
-                ).fetchone()
+        with get_connection() as conn:
+            email, ref, amount = conn.execute(
+                text("SELECT email,payment_ref,amount FROM payments WHERE id=:id"),
+                {"id": payment_id}
+            ).fetchone()
 
-                if not result:
-                    return {"success": False, "error": "Ödeme bulunamadı"}
+            conn.execute(
+                text("""
+                    UPDATE payments
+                    SET status='approved',
+                        approved_at=:t,
+                        approved_by=:by
+                    WHERE id=:id
+                """),
+                {"t": datetime.now().isoformat(), "by": approved_by, "id": payment_id}
+            )
+            conn.commit()
 
-                user_id, email, payment_ref, amount, status = result
+        self.send_email(
+            email,
+            "Ödemeniz Onaylandı - Ekinci Analiz",
+            f"<h3>Ödeme Onaylandı</h3><p>{ref} - {amount}₺</p>"
+        )
 
-                if status == "approved":
-                    return {"success": False, "error": "Bu ödeme zaten onaylanmış"}
-
-                conn.execute(
-                    text("""
-                        UPDATE payments
-                        SET status = 'approved',
-                            approved_at = :approved,
-                            approved_by = :by
-                        WHERE id = :pid
-                    """),
-                    {
-                        "approved": datetime.now().isoformat(),
-                        "by": approved_by,
-                        "pid": payment_id
-                    }
-                )
-                conn.commit()
-
-            # 📧 Onay maili
-            subject = "Ödemeniz Onaylandı - Ekinci Analiz"
-            body = f"""
-            <html><body style="font-family:Arial;background:#f3f4f6;padding:20px;">
-            <div style="max-width:600px;margin:auto;background:white;padding:30px;border-radius:10px;">
-                <h2 style="color:#16a34a;">Ödeme Onaylandı</h2>
-                <p>Ödemeniz başarıyla onaylandı.</p>
-                <div style="background:#dcfce7;padding:15px;border-radius:8px;">
-                    <strong>Referans:</strong> {payment_ref}<br>
-                    <strong>Tutar:</strong> {amount}₺
-                </div>
-                <p>Hesabınıza giriş yaparak içeriklere erişebilirsiniz.</p>
-            </div>
-            </body></html>
-            """
-
-            self.send_email(email, subject, body)
-
-            return {"success": True, "user_id": user_id}
-
-        except Exception as e:
-            print(f"⚠️ Onaylama hatası: {e}")
-            return {"success": False, "error": str(e)}
+        return {"success": True}
 
     # =====================
     # REJECT PAYMENT + MAIL
     # =====================
     def reject_payment(self, payment_id, reason=""):
-        try:
-            with get_connection() as conn:
-                result = conn.execute(
-                    text("""
-                        SELECT email, payment_ref, amount, status
-                        FROM payments
-                        WHERE id = :pid
-                    """),
-                    {"pid": payment_id}
-                ).fetchone()
+        with get_connection() as conn:
+            email, ref, amount = conn.execute(
+                text("SELECT email,payment_ref,amount FROM payments WHERE id=:id"),
+                {"id": payment_id}
+            ).fetchone()
 
-                if not result:
-                    return {"success": False, "error": "Ödeme bulunamadı"}
+            conn.execute(
+                text("""
+                    UPDATE payments
+                    SET status='rejected',
+                        rejection_reason=:r
+                    WHERE id=:id
+                """),
+                {"r": reason or "Belirtilmedi", "id": payment_id}
+            )
+            conn.commit()
 
-                email, payment_ref, amount, status = result
+        self.send_email(
+            email,
+            "Ödemeniz Reddedildi - Ekinci Analiz",
+            f"<h3>Ödeme Reddedildi</h3><p>{ref} - {amount}₺</p><p>{reason}</p>"
+        )
 
-                if status == "rejected":
-                    return {"success": False, "error": "Bu ödeme zaten reddedilmiş"}
+        return {"success": True}
 
-                conn.execute(
-                    text("""
-                        UPDATE payments
-                        SET status = 'rejected',
-                            rejection_reason = :reason
-                        WHERE id = :pid
-                    """),
-                    {"reason": reason or "Belirtilmedi", "pid": payment_id}
-                )
-                conn.commit()
+    # =====================
+    # USER PAYMENTS
+    # =====================
+    def get_user_payments(self, user_id):
+        with get_connection() as conn:
+            rows = conn.execute(
+                text("""
+                    SELECT payment_ref,amount,status,created_at,approved_at
+                    FROM payments
+                    WHERE user_id=:uid
+                    ORDER BY created_at DESC
+                """),
+                {"uid": user_id}
+            ).fetchall()
 
-            # 📧 Reddetme maili
-            subject = "Ödemeniz Reddedildi - Ekinci Analiz"
-            body = f"""
-            <html><body style="font-family:Arial;background:#f3f4f6;padding:20px;">
-            <div style="max-width:600px;margin:auto;background:white;padding:30px;border-radius:10px;">
-                <h2 style="color:#dc2626;">Ödeme Reddedildi</h2>
-                <p>Ödemeniz aşağıdaki nedenle reddedildi:</p>
-                <div style="background:#fee2e2;padding:15px;border-radius:8px;">
-                    <strong>Referans:</strong> {payment_ref}<br>
-                    <strong>Tutar:</strong> {amount}₺<br>
-                    <strong>Neden:</strong> {reason or "Belirtilmedi"}
-                </div>
-            </div>
-            </body></html>
-            """
-
-            self.send_email(email, subject, body)
-
-            return {"success": True}
-
-        except Exception as e:
-            print(f"⚠️ Reddetme hatası: {e}")
-            return {"success": False, "error": str(e)}
+        return [{
+            "payment_ref": r[0],
+            "amount": r[1],
+            "status": r[2],
+            "created_at": str(r[3]),
+            "approved_at": str(r[4]) if r[4] else None
+        } for r in rows]
 
     # =====================
     # PAYMENT STATS
     # =====================
     def get_payment_stats(self):
-        """Ödeme istatistikleri"""
-        try:
-            with get_connection() as conn:
-                pending_count = conn.execute(
-                    text("SELECT COUNT(*) FROM payments WHERE status = 'pending'")
-                ).fetchone()[0]
+        with get_connection() as conn:
+            pending = conn.execute(text("SELECT COUNT(*) FROM payments WHERE status='pending'")).fetchone()[0]
+            approved = conn.execute(text("SELECT COUNT(*) FROM payments WHERE status='approved'")).fetchone()[0]
+            rejected = conn.execute(text("SELECT COUNT(*) FROM payments WHERE status='rejected'")).fetchone()[0]
+            revenue = conn.execute(
+                text("SELECT SUM(amount) FROM payments WHERE status='approved'")
+            ).fetchone()[0] or 0
 
-                approved_count = conn.execute(
-                    text("SELECT COUNT(*) FROM payments WHERE status = 'approved'")
-                ).fetchone()[0]
-
-                rejected_count = conn.execute(
-                    text("SELECT COUNT(*) FROM payments WHERE status = 'rejected'")
-                ).fetchone()[0]
-
-                total_revenue = conn.execute(
-                    text("SELECT SUM(amount) FROM payments WHERE status = 'approved'")
-                ).fetchone()[0] or 0
-
-            return {
-                "pending_payments": pending_count,
-                "approved_payments": approved_count,
-                "rejected_payments": rejected_count,
-                "total_revenue": int(total_revenue)
-            }
-
-        except Exception as e:
-            print(f"⚠️ Ödeme istatistik hatası: {e}")
-            return {
-                "pending_payments": 0,
-                "approved_payments": 0,
-                "rejected_payments": 0,
-                "total_revenue": 0
-            }
-
+        return {
+            "pending_payments": pending,
+            "approved_payments": approved,
+            "rejected_payments": rejected,
+            "total_revenue": int(revenue)
+        }
