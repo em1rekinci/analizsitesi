@@ -94,13 +94,11 @@ def get_team_stats(team_id):
     ).get("matches", [])
 
     g_for = g_against = over25 = kg = fh15 = 0
-    valid_fh = valid_kg = 0
 
     for m in data:
         ft = m["score"]["fullTime"]
-        ht = m["score"].get("halfTime")
-
-        if not ft or ft["home"] is None or ft["away"] is None:
+        ht = m["score"]["halfTime"]
+        if ft["home"] is None:
             continue
 
         is_home = m["homeTeam"]["id"] == team_id
@@ -109,38 +107,24 @@ def get_team_stats(team_id):
 
         g_for += tg
         g_against += og
-
-        if tg + og >= 3:
-            over25 += 1
-
-        if tg > 0 and og > 0:
-            kg += 1
-        valid_kg += 1
-
-        if ht and ht.get("home") is not None and ht.get("away") is not None:
-            if ht["home"] + ht["away"] >= 2:
-                fh15 += 1
-            valid_fh += 1
+        if tg + og >= 3: over25 += 1
+        if tg > 0 and og > 0: kg += 1
+        if ht and ht["home"] + ht["away"] >= 2: fh15 += 1
 
     total = len(data) or 1
-
     stats = {
         "avg_scored": round(g_for / total, 2),
         "avg_conceded": round(g_against / total, 2),
         "over25": round(over25 / total * 100, 2),
-        "kg": round((kg / valid_kg * 100) if valid_kg else 50, 2),
-        "fh15": round((fh15 / valid_fh * 100) if valid_fh else 45, 2)
+        "kg": round(kg / total * 100, 2),
+        "fh15": round(fh15 / total * 100, 2)
     }
 
     TEAM_CACHE[team_id] = stats
     return stats
 
-
-
-def clamp(x, low=5, high=95):
-    return max(low, min(high, x))
-
 def ms_probs(hs, as_):
+    # v6.py hesaplama mantığı
     attack_diff = hs["avg_scored"] - as_["avg_scored"]
     defence_diff = as_["avg_conceded"] - hs["avg_conceded"]
 
@@ -166,15 +150,17 @@ def ms_probs(hs, as_):
     }
 
 def over_probs(hs, as_):
+    # v6.py hesaplama mantığı
     o = (hs["over25"] + as_["over25"]) / 2
     return {"O25": round(o, 2)}
 
-
 def kg_probs(hs, as_):
+    # v6.py hesaplama mantığı
     o = (hs["kg"] + as_["kg"]) / 2
     return {"KG": round(o, 2)}
 
 def fh_probs(hs, as_):
+    # v6.py hesaplama mantığı
     o = (hs["fh15"] + as_["fh15"]) / 2
     return {"FH15": round(o, 2)}
 
