@@ -20,7 +20,7 @@ class PaymentManager:
             resend.api_key = os.getenv("RESEND_API_KEY")
 
             resend.Emails.send({
-                "from": "Ekinci Analiz <noreply@resend.dev>",
+                "from": "Ekinci Analiz <noreply@ekincianaliz.online>",
                 "to": [to_email],
                 "subject": subject,
                 "html": body
