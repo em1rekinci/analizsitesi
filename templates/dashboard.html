@@ -218,7 +218,11 @@
 
       {% if not match.is_free and not is_premium %}
       <div class="premium-overlay">
+        {% if not user %}
         <a href="/register" class="premium-btn">🔒 Premium</a>
+        {% else %}
+        <a href="/payment" class="premium-btn">🔒 Premium</a>
+        {% endif %}
       </div>
       {% endif %}
 
@@ -246,9 +250,16 @@
       <p style="opacity: 0.8; margin-bottom: 20px;">
         Günün en iyi bahis önerilerini görmek için Premium üyeliğe geçin
       </p>
+      {% if not user %}
       <a href="/register" class="premium-btn" style="padding: 12px 24px; font-size: 14px; display: inline-block;">
-        ⭐ Premium Üye Ol
-      </a>
+     ⭐ Premium Üye Ol
+     </a>
+     {% else %}
+     <a href="/payment" class="premium-btn" style="padding: 12px 24px; font-size: 14px; display: inline-block;">
+    ⭐ Premium Üye Ol
+    </a>
+    {% endif %}
+
     </div>
     {% endif %}
   </div>
