@@ -153,16 +153,16 @@ def ms_probs(hs, as_):
 
 def over_probs(hs, as_):
     o = (hs["over25"] + as_["over25"]) / 2
-    return {"Over 2.5": round(o, 2), "Under 2.5": round(100 - o, 2)}
+    return {"O25": round(o, 2)}
 
 
 def kg_probs(hs, as_):
     o = (hs["kg"] + as_["kg"]) / 2
-    return {"KG VAR": round(o, 2), "KG YOK": round(100 - o, 2)}
+    return {"KG": round(o, 2)}
 
 def fh_probs(hs, as_):
     o = (hs["fh15"] + as_["fh15"]) / 2
-    return {"İY 1.5 ÜST": round(o, 2), "İY 1.5 ALT": round(100 - o, 2)}
+    return {"FH15": round(o, 2)}
 
 def build_markets(match, picks, league_code):
     hs = get_team_stats(match["homeTeam"]["id"])
