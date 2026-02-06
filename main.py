@@ -127,34 +127,43 @@ def clamp(x, low=5, high=95):
     return max(low, min(high, x))
 
 def ms_probs(hs, as_):
-    diff = hs["avg_scored"] - as_["avg_scored"]
-    raw = 50 + diff * 9
-    ms1 = clamp(raw)
-    ms2 = clamp(100 - raw)
-    ms0 = clamp(100 - (ms1 + ms2), 8, 30)
+    attack_diff = hs["avg_scored"] - as_["avg_scored"]
+    defence_diff = as_["avg_conceded"] - hs["avg_conceded"]
 
-    t = ms1 + ms0 + ms2
+    strength = attack_diff * 7 + defence_diff * 5
+    tempo = hs["avg_scored"] + as_["avg_scored"]
+
+    s1 = 1.0 + strength * 0.06
+    s2 = 1.0 - strength * 0.06
+
+    balance = abs(attack_diff) + abs(defence_diff)
+    sx = 1.15 - balance * 0.35 - tempo * 0.15
+
+    s1 = max(0.2, s1)
+    s2 = max(0.2, s2)
+    sx = max(0.2, sx)
+
+    total = s1 + sx + s2
+
     return {
-        "MS1": round(ms1 / t * 100, 2),
-        "MS0": round(ms0 / t * 100, 2),
-        "MS2": round(ms2 / t * 100, 2)
+        "MS1": round(s1 / total * 100, 2),
+        "MSX": round(sx / total * 100, 2),
+        "MS2": round(s2 / total * 100, 2)
     }
 
+
 def over_probs(hs, as_):
-    base = (hs["over25"] + as_["over25"]) / 2
-    adj = abs(hs["avg_scored"] - as_["avg_scored"]) * 4
-    o = clamp(base + adj, 10, 85)
-    return {"O25": round(o, 2)}
+    o = (hs["over25"] + as_["over25"]) / 2
+    return {"Over 2.5": round(o, 2), "Under 2.5": round(100 - o, 2)}
+
 
 def kg_probs(hs, as_):
-    gap = abs(hs["avg_scored"] - as_["avg_scored"])
-    base = (hs["kg"] + as_["kg"]) / 2
-    o = clamp(base - gap * 6, 10, 75)
-    return {"KG": round(o, 2)}
+    o = (hs["kg"] + as_["kg"]) / 2
+    return {"KG VAR": round(o, 2), "KG YOK": round(100 - o, 2)}
 
 def fh_probs(hs, as_):
-    o = clamp((hs["fh15"] + as_["fh15"]) / 2, 5, 80)
-    return {"FH15": round(o, 2)}
+    o = (hs["fh15"] + as_["fh15"]) / 2
+    return {"İY 1.5 ÜST": round(o, 2), "İY 1.5 ALT": round(100 - o, 2)}
 
 def build_markets(match, picks, league_code):
     hs = get_team_stats(match["homeTeam"]["id"])
