@@ -263,7 +263,7 @@
       
       {% if free_picks %}
       <div style="background: #064e3b; border: 2px solid #10b981; border-radius: 8px; padding: 20px; margin-bottom: 20px;">
-        <h3 style="color: #10b981; margin-bottom: 16px;">🎁 Ücretsiz Tahminler ({{ free_count }}/{{ picks|length }})</h3>
+        <h3 style="color: #10b981; margin-bottom: 16px;">🎁 Ücretsiz Tahminler</h3>
         <ul style="margin: 0;">
           {% for p in free_picks %}
           <li style="margin-bottom: 8px;">
@@ -273,14 +273,14 @@
           {% endfor %}
         </ul>
         <p style="margin-top: 16px; font-size: 14px; opacity: 0.9;">
-          ✅ Bu tahminler size ücretsiz sunuldu! Sonuçları kontrol edin.
+          ✅ Bu tahminler size ücretsiz sunuldu! Devamı için Premium olun.
         </p>
       </div>
       {% endif %}
       
       <div class="premium-picks-lock">
         <div style="font-size: 48px; margin-bottom: 16px;">🔒</div>
-        <h3 style="color: #facc15; margin-bottom: 12px;">Kalan {{ picks|length - free_count }} Premium Tahmin</h3>
+        <h3 style="color: #facc15; margin-bottom: 12px;">Premium Tahmin</h3>
         <p style="opacity: 0.8; margin-bottom: 20px;">
           Günün en iyi bahis önerilerini görmek için Premium üyeliğe geçin
         </p>
