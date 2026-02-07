@@ -138,6 +138,16 @@
       border-radius: 8px;
       margin-top: 12px;
     }
+    
+    .free-badge {
+      background: #10b981;
+      color: #fff;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: bold;
+      margin-left: 8px;
+    }
   </style>
 </head>
 <body>
@@ -203,12 +213,15 @@
       <div class="cell match">
         {{ match.homeTeam.name }} - {{ match.awayTeam.name }}
         <span class="time">{{ match.time }}</span>
+        {% if match.is_free and not is_premium %}
+          <span class="free-badge">🎁 ÜCRETSİZ</span>
+        {% endif %}
       </div>
 
       {% for key in ["MS1","MS0","MS2","O25","KG","FH15"] %}
       <div class="cell {% if not match.is_free and not is_premium %}blur{% endif %}">
         {{ match.markets[key] }}%
-        {% if match.markets.best == key and match.markets.best_value >= 60 %}
+        {% if match.markets.best == key and match.markets.best_value >= 65 %}
           {% if match.is_free or is_premium %}
             <span class="star">⭐</span>
           {% endif %}
@@ -236,31 +249,51 @@
     <h2>🔥 Günün Oynanabilir Tercihleri</h2>
     
     {% if is_premium %}
-    <ul>
-      {% for p in picks %}
-      <li>
-        <strong>{{ p.match }}</strong> → {{ p.market }} (%{{ p.value }})
-      </li>
-      {% endfor %}
-    </ul>
+      <ul>
+        {% for p in picks %}
+        <li>
+          <strong>{{ p.match }}</strong> → {{ p.market }} (%{{ p.value }})
+        </li>
+        {% endfor %}
+      </ul>
     {% else %}
-    <div class="premium-picks-lock">
-      <div style="font-size: 48px; margin-bottom: 16px;">🔒</div>
-      <h3 style="color: #facc15; margin-bottom: 12px;">Premium İçerik</h3>
-      <p style="opacity: 0.8; margin-bottom: 20px;">
-        Günün en iyi bahis önerilerini görmek için Premium üyeliğe geçin
-      </p>
-      {% if not user %}
-      <a href="/register" class="premium-btn" style="padding: 12px 24px; font-size: 14px; display: inline-block;">
-     ⭐ Premium Üye Ol
-     </a>
-     {% else %}
-     <a href="/payment" class="premium-btn" style="padding: 12px 24px; font-size: 14px; display: inline-block;">
-    ⭐ Premium Üye Ol
-    </a>
-    {% endif %}
-
-    </div>
+      <!-- Free kullanıcılar için en iyi 2-3 tahmini göster -->
+      {% set sorted_picks = picks|sort(attribute='value', reverse=True) %}
+      {% set free_picks = sorted_picks[:free_count] %}
+      
+      {% if free_picks %}
+      <div style="background: #064e3b; border: 2px solid #10b981; border-radius: 8px; padding: 20px; margin-bottom: 20px;">
+        <h3 style="color: #10b981; margin-bottom: 16px;">🎁 Ücretsiz Tahminler ({{ free_count }}/{{ picks|length }})</h3>
+        <ul style="margin: 0;">
+          {% for p in free_picks %}
+          <li style="margin-bottom: 8px;">
+            <strong>{{ p.match }}</strong> → {{ p.market }} (%{{ p.value }})
+            <span class="free-badge">ÜCRETSİZ</span>
+          </li>
+          {% endfor %}
+        </ul>
+        <p style="margin-top: 16px; font-size: 14px; opacity: 0.9;">
+          ✅ Bu tahminler size ücretsiz sunuldu! Sonuçları kontrol edin.
+        </p>
+      </div>
+      {% endif %}
+      
+      <div class="premium-picks-lock">
+        <div style="font-size: 48px; margin-bottom: 16px;">🔒</div>
+        <h3 style="color: #facc15; margin-bottom: 12px;">Kalan {{ picks|length - free_count }} Premium Tahmin</h3>
+        <p style="opacity: 0.8; margin-bottom: 20px;">
+          Günün en iyi bahis önerilerini görmek için Premium üyeliğe geçin
+        </p>
+        {% if not user %}
+        <a href="/register" class="premium-btn" style="padding: 12px 24px; font-size: 14px; display: inline-block;">
+          ⭐ Premium Üye Ol
+        </a>
+        {% else %}
+        <a href="/payment" class="premium-btn" style="padding: 12px 24px; font-size: 14px; display: inline-block;">
+          ⭐ Premium Üye Ol
+        </a>
+        {% endif %}
+      </div>
     {% endif %}
   </div>
   {% endif %}
@@ -269,7 +302,7 @@
   <div class="no-matches">
     <h2>⚽ Bugün Maç Yok</h2>
     <p>Seçili liglerde bugün oynanacak maç bulunmamaktadır.</p>
-    <p style="font-size: 14px; opacity: 0.7;">Yarın tekrar kontrol edin veya cache'i yenileyebilirsiniz.</p>
+    <p style="font-size: 14px; opacity: 0.7;">Yarın tekrar kontrol edin veya sayfayı yenileyebilirsiniz.</p>
     <a href="/refresh" class="refresh-btn">🔄 Yenile</a>
   </div>
 {% endif %}
@@ -306,4 +339,3 @@ if (!document.querySelector('meta[name="viewport"]')) {
     Şikayet ve Öneriler: <a href="mailto:ekincianaliz@gmail.com" style="color: #38bdf8; text-decoration: none;">ekincianaliz@gmail.com</a>
   </p>
 </footer>
-

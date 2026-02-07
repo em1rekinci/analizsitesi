@@ -278,14 +278,36 @@ def dashboard(request: Request, session_id: str = Cookie(None)):
         if not cached:
             return HTMLResponse("<h1>Veriler hazırlanıyor, 10-20 sn sonra yenileyin</h1>")
 
+    # Free picks mantığı
+    all_matches = cached["matches"]
+    all_picks = cached.get("picks", [])
+    
+    # Toplam maç sayısı
+    total_matches = sum(len(matches) for matches in all_matches.values())
+    
+    # Free pick sayısını belirle
+    free_count = 3 if total_matches >= 10 else 2
+    
+    # En yüksek değerli picksleri sırala
+    sorted_picks = sorted(all_picks, key=lambda x: x['value'], reverse=True)
+    free_pick_matches = [p['match'] for p in sorted_picks[:free_count]]
+    
+    # Her maça is_free flag ekle
+    for league_matches in all_matches.values():
+        for match in league_matches:
+            match_name = f"{match['homeTeam']['name']} - {match['awayTeam']['name']}"
+            match['is_free'] = match_name in free_pick_matches
+
     return templates.TemplateResponse(
         "dashboard.html",
         {
             "request": request,
-            "matches": cached["matches"],
-            "picks": cached.get("picks", []),
+            "matches": all_matches,
+            "picks": all_picks,
             "user": user,
-            "is_premium": is_premium
+            "is_premium": is_premium,
+            "free_count": free_count,
+            "free_pick_matches": free_pick_matches
         }
     )
 
@@ -528,14 +550,36 @@ def refresh_data(request: Request, session_id: str = Cookie(None)):
         if not cached:
             return HTMLResponse("<h1>Veriler yüklenemedi, lütfen birkaç saniye bekleyip tekrar deneyin</h1>")
         
+        # Free picks mantığı
+        all_matches = cached.get("matches", {})
+        all_picks = cached.get("picks", [])
+        
+        # Toplam maç sayısı
+        total_matches = sum(len(matches) for matches in all_matches.values())
+        
+        # Free pick sayısını belirle
+        free_count = 3 if total_matches >= 10 else 2
+        
+        # En yüksek değerli picksleri sırala
+        sorted_picks = sorted(all_picks, key=lambda x: x['value'], reverse=True)
+        free_pick_matches = [p['match'] for p in sorted_picks[:free_count]]
+        
+        # Her maça is_free flag ekle
+        for league_matches in all_matches.values():
+            for match in league_matches:
+                match_name = f"{match['homeTeam']['name']} - {match['awayTeam']['name']}"
+                match['is_free'] = match_name in free_pick_matches
+        
         return templates.TemplateResponse(
             "dashboard.html",
             {
                 "request": request,
-                "matches": cached.get("matches", {}),
-                "picks": cached.get("picks", []),
+                "matches": all_matches,
+                "picks": all_picks,
                 "is_premium": is_premium,
-                "user": user
+                "user": user,
+                "free_count": free_count,
+                "free_pick_matches": free_pick_matches
             }
         )
     except Exception as e:
