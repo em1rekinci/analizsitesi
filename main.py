@@ -313,9 +313,17 @@ def dashboard(request: Request, session_id: str = Cookie(None)):
 
             match["is_free"] = (
                 is_premium
-                or match_name in free_pick_matches
-                or match_name in guaranteed_free
-            )
+                or (
+                    not user
+                    and match_name in guaranteed_free
+                )
+                or (
+                    user
+                    and not is_premium
+                    and match_name in free_pick_matches
+                )
+             )
+          
 
     return templates.TemplateResponse(
         "dashboard.html",
