@@ -208,28 +208,28 @@
     </div>
 
     {% for match in league_matches %}
-    <div class="match-row {% if not match.is_free and is_free_user %}locked{% endif %}">
+    <div class="match-row {% if not match.is_free and not is_premium %}locked{% endif %}">
 
       <div class="cell match">
         {{ match.homeTeam.name }} - {{ match.awayTeam.name }}
         <span class="time">{{ match.time }}</span>
-        {% if match.is_free and is_free_user %}
+        {% if match.is_free and not is_premium %}
           <span class="free-badge">🎁 ÜCRETSİZ</span>
         {% endif %}
       </div>
 
       {% for key in ["MS1","MS0","MS2","O25","KG","FH15"] %}
-      <div class="cell {% if not match.is_free and is_free_user %}blur{% endif %}">
+      <div class="cell {% if not match.is_free and not is_premium %}blur{% endif %}">
         {{ match.markets[key] }}%
         {% if match.markets.best == key and match.markets.best_value >= 65 %}
-          {% if match.is_free or not is_free_user %}
+          {% if match.is_free or is_premium %}
             <span class="star">⭐</span>
           {% endif %}
         {% endif %}
       </div>
       {% endfor %}
 
-     {% if not match.is_free and is_free_user %}
+      {% if not match.is_free and not is_premium %}
       <div class="premium-overlay">
         {% if not user %}
         <a href="/register" class="premium-btn">🔒 Premium</a>
@@ -258,8 +258,8 @@
       </ul>
     {% else %}
       <!-- Free kullanıcılar için en iyi 2-3 tahmini göster -->
-      {% set free_picks = picks | selectattr("is_free") | list %}
-      
+      {% set sorted_picks = picks|sort(attribute='value', reverse=True) %}
+      {% set free_picks = sorted_picks[:free_count] %}
       
       {% if free_picks %}
       <div style="background: #064e3b; border: 2px solid #10b981; border-radius: 8px; padding: 20px; margin-bottom: 20px;">

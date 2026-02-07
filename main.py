@@ -299,10 +299,7 @@ def dashboard(request: Request, session_id: str = Cookie(None)):
 
     # picks varsa en iyiler
     sorted_picks = sorted(all_picks, key=lambda x: x["value"], reverse=True)
-    free_pick_matches = [p["match"] for p in sorted_picks[:free_count]]
-
-    # picks yoksa bile ilk maçları göster
-    guaranteed_free = set(flat_matches[:free_count])
+    free_pick_matches = set(p["match"] for p in sorted_picks[:free_count])
 
     # =====================
     # MAÇLARA FLAG EKLE
@@ -311,17 +308,11 @@ def dashboard(request: Request, session_id: str = Cookie(None)):
         for match in league_matches:
             match_name = f"{match['homeTeam']['name']} - {match['awayTeam']['name']}"
 
+            # Premium ise tüm maçlar açık
+            # Premium değilse (giriş yapmış ya da yapmamış) sadece free_pick_matches açık
             match["is_free"] = (
                 is_premium
-                or (
-                    not user
-                    and match_name in guaranteed_free
-                )
-                or (
-                    user
-                    and not is_premium
-                    and match_name in free_pick_matches
-                )
+                or match_name in free_pick_matches
              )
           
 
