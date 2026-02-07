@@ -588,13 +588,16 @@ def refresh_data(request: Request, session_id: str = Cookie(None)):
         
         # En yüksek değerli picksleri sırala
         sorted_picks = sorted(all_picks, key=lambda x: x['value'], reverse=True)
-        free_pick_matches = [p['match'] for p in sorted_picks[:free_count]]
+        free_pick_matches = set(p["match"] for p in sorted_picks[:free_count])
         
         # Her maça is_free flag ekle
         for league_matches in all_matches.values():
             for match in league_matches:
                 match_name = f"{match['homeTeam']['name']} - {match['awayTeam']['name']}"
-                match['is_free'] = match_name in free_pick_matches
+                match['is_free'] = (
+                   is_premium
+                   or match_name in free_pick_matches
+                )
         
         return templates.TemplateResponse(
             "dashboard.html",
