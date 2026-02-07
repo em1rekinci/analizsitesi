@@ -274,29 +274,48 @@ def dashboard(request: Request, session_id: str = Cookie(None)):
     if not cached:
         fetch_all_matches()
         cached = cache_manager.get_matches_cache()
-
         if not cached:
-            return HTMLResponse("<h1>Veriler hazırlanıyor, 10-20 sn sonra yenileyin</h1>")
+            return HTMLResponse("<h1>Veriler hazırlanıyor, birkaç saniye sonra yenileyin</h1>")
 
-    # Free picks mantığı
-    all_matches = cached["matches"]
+    all_matches = cached.get("matches", {})
     all_picks = cached.get("picks", [])
-    
-    # Toplam maç sayısı
-    total_matches = sum(len(matches) for matches in all_matches.values())
-    
-    # Free pick sayısını belirle
+
+    # =====================
+    # FREE MAÇ MANTIĞI
+    # =====================
+
+    # toplam maç sayısı
+    flat_matches = []
+    for league_matches in all_matches.values():
+        for m in league_matches:
+            flat_matches.append(
+                f"{m['homeTeam']['name']} - {m['awayTeam']['name']}"
+            )
+
+    total_matches = len(flat_matches)
+
+    # free kullanıcıya garanti gösterilecek maç sayısı
     free_count = 3 if total_matches >= 10 else 2
-    
-    # En yüksek değerli picksleri sırala
-    sorted_picks = sorted(all_picks, key=lambda x: x['value'], reverse=True)
-    free_pick_matches = [p['match'] for p in sorted_picks[:free_count]]
-    
-    # Her maça is_free flag ekle
+
+    # picks varsa en iyiler
+    sorted_picks = sorted(all_picks, key=lambda x: x["value"], reverse=True)
+    free_pick_matches = [p["match"] for p in sorted_picks[:free_count]]
+
+    # picks yoksa bile ilk maçları göster
+    guaranteed_free = set(flat_matches[:free_count])
+
+    # =====================
+    # MAÇLARA FLAG EKLE
+    # =====================
     for league_matches in all_matches.values():
         for match in league_matches:
             match_name = f"{match['homeTeam']['name']} - {match['awayTeam']['name']}"
-            match['is_free'] = match_name in free_pick_matches
+
+            match["is_free"] = (
+                is_premium
+                or match_name in free_pick_matches
+                or match_name in guaranteed_free
+            )
 
     return templates.TemplateResponse(
         "dashboard.html",
@@ -306,8 +325,7 @@ def dashboard(request: Request, session_id: str = Cookie(None)):
             "picks": all_picks,
             "user": user,
             "is_premium": is_premium,
-            "free_count": free_count,
-            "free_pick_matches": free_pick_matches
+            "free_count": free_count
         }
     )
 
