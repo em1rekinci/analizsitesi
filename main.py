@@ -73,15 +73,64 @@ def get_current_user(session_id: str = None):
         return None
     return user_manager.verify_session(session_id)
 
-def safe_request(url, params=None):
-    try:
-        r = requests.get(url, headers=HEADERS, params=params, timeout=30)
-        if r.status_code == 200:
-            return r.json()
-        if r.status_code == 429:
-            time.sleep(20)
-    except:
-        pass
+def safe_request(url, params=None, retries=2):
+    """
+    API request - hata loglama ve retry ile
+    """
+    for attempt in range(retries):
+        try:
+            r = requests.get(url, headers=HEADERS, params=params, timeout=30)
+            
+            if r.status_code == 200:
+                return r.json()
+            
+            elif r.status_code == 429:
+                wait_time = 20 * (attempt + 1)
+                print(f"⚠️ Rate limit (429): {url}")
+                print(f"   💤 {wait_time} saniye bekleniyor...")
+                time.sleep(wait_time)
+                continue
+            
+            elif r.status_code == 403:
+                print(f"🚫 Erişim engellendi (403): {url}")
+                print(f"   ⚠️ API key kontrolü gerekiyor!")
+                return {}
+            
+            elif r.status_code == 404:
+                print(f"❌ Bulunamadı (404): {url}")
+                return {}
+            
+            elif r.status_code >= 500:
+                print(f"⚠️ Sunucu hatası ({r.status_code}): {url}")
+                if attempt < retries - 1:
+                    time.sleep(5)
+                    continue
+                return {}
+            
+            else:
+                print(f"⚠️ Bilinmeyen hata ({r.status_code}): {url}")
+                return {}
+                
+        except requests.exceptions.Timeout:
+            print(f"⏱️ Timeout: {url} - Deneme {attempt + 1}/{retries}")
+            if attempt < retries - 1:
+                time.sleep(3)
+                continue
+            return {}
+            
+        except requests.exceptions.ConnectionError:
+            print(f"🔌 Bağlantı hatası: {url} - Deneme {attempt + 1}/{retries}")
+            if attempt < retries - 1:
+                time.sleep(5)
+                continue
+            return {}
+            
+        except Exception as e:
+            print(f"❌ Beklenmeyen hata: {url}")
+            print(f"   Hata detayı: {str(e)}")
+            return {}
+    
+    print(f"💥 Tüm denemeler başarısız: {url}")
     return {}
 
 def get_team_stats(team_id):
@@ -242,23 +291,50 @@ def fetch_all_matches():
     grouped = defaultdict(list)
     picks = []
     today = date.today().isoformat()
+    
+    print(f"\n{'='*60}")
+    print(f"🔄 MAÇ ÇEKME BAŞLADI - {today}")
+    print(f"{'='*60}\n")
 
     for league, code in COMPETITIONS.items():
+        print(f"📊 {league} ({code}) kontrol ediliyor...")
+        
         data = safe_request(
             f"{BASE_URL}/competitions/{code}/matches",
             {"dateFrom": today, "dateTo": today}
         )
+        
+        matches = data.get("matches", [])
+        
+        if not matches:
+            print(f"   ℹ️ Bugün maç yok\n")
+            continue
+        
+        print(f"   ✅ {len(matches)} maç bulundu")
 
-        for m in data.get("matches", []):
-            dt = datetime.fromisoformat(
-                m["utcDate"].replace("Z", "+00:00")
-            ).astimezone(TR_TZ)
+        for m in matches:
+            try:
+                dt = datetime.fromisoformat(
+                    m["utcDate"].replace("Z", "+00:00")
+                ).astimezone(TR_TZ)
 
-            m["time"] = dt.strftime("%H:%M")
-            m["league"] = league
-            m["markets"] = build_markets(m, picks, code)
-            
-            grouped[league].append(m)
+                m["time"] = dt.strftime("%H:%M")
+                m["league"] = league
+                m["markets"] = build_markets(m, picks, code)
+                
+                grouped[league].append(m)
+                print(f"      • {m['homeTeam']['name']} - {m['awayTeam']['name']} ({m['time']})")
+            except Exception as e:
+                print(f"      ❌ Maç işlenirken hata: {str(e)}")
+                continue
+        
+        print()  # Boş satır
+    
+    print(f"{'='*60}")
+    print(f"✅ ÇEKME TAMAMLANDI")
+    print(f"   📌 Toplam {sum(len(v) for v in grouped.values())} maç")
+    print(f"   ⭐ {len(picks)} yüksek değerli tahmin")
+    print(f"{'='*60}\n")
 
     cache_manager.save_teams_cache({str(k): v for k, v in TEAM_CACHE.items()})
     cache_manager.save_matches_cache(grouped, picks)
