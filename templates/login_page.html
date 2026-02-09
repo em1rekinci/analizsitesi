@@ -47,6 +47,29 @@
       border-color: #38bdf8;
     }
     
+    /* ✅ YENİ: Checkbox stili */
+    .remember-me {
+      display: flex;
+      align-items: center;
+      margin-bottom: 18px;
+      gap: 8px;
+    }
+    
+    .remember-me input[type="checkbox"] {
+      width: auto;
+      margin: 0;
+      cursor: pointer;
+      accent-color: #38bdf8;
+    }
+    
+    .remember-me label {
+      margin: 0;
+      cursor: pointer;
+      color: #94a3b8;
+      font-size: 14px;
+      user-select: none;
+    }
+    
     .error-message {
       background: #7f1d1d;
       color: #fca5a5;
@@ -125,6 +148,18 @@
         required
         autocomplete="current-password"
       >
+    </div>
+
+    <!-- ✅ YENİ: Beni Hatırla Checkbox -->
+    <div class="remember-me">
+      <input 
+        type="checkbox" 
+        id="remember_me" 
+        name="remember_me" 
+        value="true"
+        checked
+      >
+      <label for="remember_me">Beni Hatırla</label>
     </div>
 
     <button type="submit" class="submit-btn">

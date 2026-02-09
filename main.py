@@ -567,7 +567,14 @@ async def register_submit(
     
     if login_result["success"]:
         response = RedirectResponse(url="/dashboard", status_code=303)
-        response.set_cookie(key="session_id", value=login_result["session_id"], httponly=True)
+        # ✅ Kayıt olunca otomatik 30 gün hatırla
+        response.set_cookie(
+            key="session_id", 
+            value=login_result["session_id"], 
+            httponly=True,
+            max_age=30 * 24 * 60 * 60,  # 30 gün
+            samesite="lax"
+        )
         return response
     
     return templates.TemplateResponse(
@@ -583,7 +590,8 @@ def login_page(request: Request):
 async def login_submit(
     request: Request,
     email: str = Form(...),
-    password: str = Form(...)
+    password: str = Form(...),
+    remember_me: str = Form(None)  # ✅ Beni hatırla checkbox (HTML'den "true" gelir)
 ):
     result = user_manager.login_user(email, password)
     
@@ -594,7 +602,17 @@ async def login_submit(
         )
     
     response = RedirectResponse(url="/dashboard", status_code=303)
-    response.set_cookie(key="session_id", value=result["session_id"], httponly=True)
+    
+    # ✅ Beni hatırla işaretliyse 30 gün, değilse oturum süresi (tarayıcı kapanınca siler)
+    max_age = 30 * 24 * 60 * 60 if remember_me == "true" else None  # 30 gün
+    
+    response.set_cookie(
+        key="session_id", 
+        value=result["session_id"], 
+        httponly=True,
+        max_age=max_age,
+        samesite="lax"  # Güvenlik için
+    )
     return response
 
 @app.get("/logout")
