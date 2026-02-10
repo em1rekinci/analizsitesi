@@ -148,6 +148,37 @@
       font-weight: bold;
       margin-left: 8px;
     }
+    
+    /* ✅ YENİ: Kuponlar butonu */
+    .coupons-button {
+      background: linear-gradient(135deg, #facc15, #fbbf24);
+      color: #000;
+      padding: 14px 28px;
+      border-radius: 12px;
+      text-decoration: none;
+      font-weight: bold;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 16px;
+      margin: 30px auto;
+      box-shadow: 0 4px 12px rgba(250, 204, 21, 0.3);
+      transition: all 0.2s;
+    }
+    
+    .coupons-button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(250, 204, 21, 0.5);
+    }
+    
+    .coupons-banner {
+      text-align: center;
+      margin: 40px 0;
+      padding: 30px;
+      background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+      border-radius: 16px;
+      border: 2px solid #facc15;
+    }
   </style>
 </head>
 <body>
@@ -190,6 +221,19 @@
       <a href="/login" class="login-button">Giriş Yap</a>
     {% endif %}
   </div>
+</div>
+
+<!-- ✅ YENİ: Kuponlar Banner -->
+<div class="coupons-banner">
+  <h2 style="color: #facc15; font-size: 28px; margin-bottom: 12px;">🎫 Hazır Kuponlar</h2>
+  <p style="color: #94a3b8; margin-bottom: 20px; font-size: 16px;">
+    Profesyonel analiz ile günlük 3 farklı kupon önerisi
+  </p>
+  <a href="/coupons" class="coupons-button">
+    <span>🏆</span>
+    <span>Kuponları Gör</span>
+    <span>→</span>
+  </a>
 </div>
 
 {% if matches and matches|length > 0 %}

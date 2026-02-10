@@ -380,6 +380,39 @@ def fh_probs(hs, as_):
     o = (hs["fh15"] + as_["fh15"]) / 2
     return {"FH15": round(o, 2)}
 
+def generate_coupons(picks):
+    """
+    ✅ GÜNCELLEME: Daha gerçekçi eşikler
+    
+    1️⃣ GÜNÜN KOMBİNESİ: %75+ (En güvenilir 3 tahmin)
+    2️⃣ YÜKSEK ORAN: %68-75 (4 tahmin)
+    3️⃣ SÜPER ORAN: %62-68 (5 tahmin)
+    """
+    if not picks:
+        return {
+            "daily": [],
+            "high_odds": [],
+            "super_odds": []
+        }
+    
+    # En yüksek güvenilirlikten sırala
+    sorted_picks = sorted(picks, key=lambda x: x['value'], reverse=True)
+    
+    # 1️⃣ GÜNÜN KOMBİNESİ: %75 ve üstü (en fazla 3 tane)
+    daily_coupon = [p for p in sorted_picks if p['value'] >= 75][:3]
+    
+    # 2️⃣ YÜKSEK ORAN: %68-75 arası (en fazla 4 tane)
+    high_odds_coupon = [p for p in sorted_picks if 68 <= p['value'] < 75][:4]
+    
+    # 3️⃣ SÜPER ORAN: %62-68 arası (en fazla 5 tane)
+    super_odds_coupon = [p for p in sorted_picks if 62 <= p['value'] < 68][:5]
+    
+    return {
+        "daily": daily_coupon,
+        "high_odds": high_odds_coupon,
+        "super_odds": super_odds_coupon
+    }
+
 def build_markets(match, picks, league_code):
     """
     ✅ Her maçın tüm marketlerini hesapla
@@ -480,8 +513,16 @@ def fetch_all_matches():
     print(f"   🎯 Hedef Başarı: %83.5")
     print(f"{'='*60}\n")
 
+    # ✅ YENİ: Kuponları oluştur
+    coupons = generate_coupons(picks)
+    print(f"🎫 KUPONLAR OLUŞTURULDU:")
+    print(f"   🏆 Günün Kombinesi: {len(coupons['daily'])} maç")
+    print(f"   🎯 Yüksek Oran: {len(coupons['high_odds'])} maç")
+    print(f"   🔥 Süper Oran: {len(coupons['super_odds'])} maç")
+    print(f"{'='*60}\n")
+
     cache_manager.save_teams_cache({str(k): v for k, v in TEAM_CACHE.items()})
-    cache_manager.save_matches_cache(grouped, picks)
+    cache_manager.save_matches_cache(grouped, picks, coupons)  # ✅ Kuponları da kaydet
 
 @app.get("/", response_class=HTMLResponse)
 @app.get("/dashboard", response_class=HTMLResponse)
@@ -499,6 +540,7 @@ def dashboard(request: Request, session_id: str = Cookie(None)):
 
     all_matches = cached.get("matches", {})
     all_picks = cached.get("picks", [])
+    coupons = cached.get("coupons", {"daily": [], "high_odds": [], "super_odds": []})  # ✅ Kuponları al
 
     # =====================
     # FREE MAÇ MANTIĞI
@@ -539,6 +581,7 @@ def dashboard(request: Request, session_id: str = Cookie(None)):
             "request": request,
             "matches": all_matches,
             "picks": all_picks,
+            "coupons": coupons,  # ✅ Kuponları template'e gönder
             "is_premium": is_premium,
             "user": user,
             "free_count": free_count
@@ -548,6 +591,31 @@ def dashboard(request: Request, session_id: str = Cookie(None)):
 @app.get("/register", response_class=HTMLResponse)
 def register_page(request: Request):
     return templates.TemplateResponse("register.html", {"request": request})
+
+@app.get("/coupons", response_class=HTMLResponse)
+def coupons_page(request: Request, session_id: str = Cookie(None)):
+    """
+    ✅ YENİ: Hazır Kuponlar Sayfası
+    """
+    user = user_manager.verify_session(session_id) if session_id else None
+    is_premium = user["is_premium"] if user else False
+    
+    cached = cache_manager.get_matches_cache()
+    
+    if not cached:
+        return HTMLResponse("<h1>Veriler yükleniyor, lütfen birkaç saniye sonra tekrar deneyin</h1>")
+    
+    coupons = cached.get("coupons", {"daily": [], "high_odds": [], "super_odds": []})
+    
+    return templates.TemplateResponse(
+        "coupons.html",
+        {
+            "request": request,
+            "coupons": coupons,
+            "is_premium": is_premium,
+            "user": user
+        }
+    )
 
 @app.post("/register", response_class=HTMLResponse)
 async def register_submit(
@@ -761,6 +829,7 @@ def refresh_data(request: Request, session_id: str = Cookie(None)):
         # Free picks mantığı
         all_matches = cached.get("matches", {})
         all_picks = cached.get("picks", [])
+        coupons = cached.get("coupons", {"daily": [], "high_odds": [], "super_odds": []})  # ✅ Kuponları al
         
         # Toplam maç sayısı
         total_matches = sum(len(matches) for matches in all_matches.values())
@@ -787,6 +856,7 @@ def refresh_data(request: Request, session_id: str = Cookie(None)):
                 "request": request,
                 "matches": all_matches,
                 "picks": all_picks,
+                "coupons": coupons,  # ✅ Kuponları template'e gönder
                 "is_premium": is_premium,
                 "user": user,
                 "free_count": free_count,
