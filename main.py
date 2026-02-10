@@ -755,15 +755,13 @@ async def forgot_password(
     email: str = Form(...)
 ):
     """Şifre sıfırlama linki gönder"""
-    # Kullanıcıyı bul
-
-try:
-
-    with get_connection() as conn:
-        result = conn.execute(
-            text("SELECT id FROM users WHERE email = :email"),
-            {"email": email}
-        ).fetchone()
+    try:
+        # Kullanıcıyı bul
+        with get_connection() as conn:
+            result = conn.execute(
+                text("SELECT id FROM users WHERE email = :email"),
+                {"email": email}
+            ).fetchone()
     
     if not result:
         return templates.TemplateResponse(
