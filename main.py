@@ -756,6 +756,9 @@ async def forgot_password(
 ):
     """Şifre sıfırlama linki gönder"""
     # Kullanıcıyı bul
+
+try:
+
     with get_connection() as conn:
         result = conn.execute(
             text("SELECT id FROM users WHERE email = :email"),
