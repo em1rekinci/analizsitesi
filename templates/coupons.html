@@ -303,12 +303,14 @@
       {% if coupons.daily %}
       <div class="coupon-stats">
         <div class="stat-row">
-          <span class="stat-label">📊 Toplam Oran</span>
-          <span class="stat-value">~{{ "%.1f"|format((coupons.daily[0].value / 100 * 1.8) * (coupons.daily[1].value / 100 * 1.8) * (coupons.daily[2].value / 100 * 1.8) if coupons.daily|length >= 3 else 0) }}</span>
+          <span class="stat-label">📊 Maç Sayısı</span>
+          <span class="stat-value">{{ coupons.daily|length }} Maç</span>
         </div>
         <div class="stat-row">
-          <span class="stat-label">✅ Eşik</span>
-          <span class="stat-value highlight">%75+ Güvenilir</span>
+          <span class="stat-label">✅ Ortalama Güven</span>
+          <span class="stat-value highlight">
+            %{{ "%.1f"|format((coupons.daily|sum(attribute='value') / coupons.daily|length) if coupons.daily|length > 0 else 0) }}
+          </span>
         </div>
       </div>
 
@@ -366,12 +368,14 @@
       {% if coupons.high_odds and is_premium %}
       <div class="coupon-stats">
         <div class="stat-row">
-          <span class="stat-label">📊 Toplam Oran</span>
-          <span class="stat-value">~8-12</span>
+          <span class="stat-label">📊 Maç Sayısı</span>
+          <span class="stat-value">{{ coupons.high_odds|length }} Maç</span>
         </div>
         <div class="stat-row">
-          <span class="stat-label">✅ Eşik</span>
-          <span class="stat-value highlight">%68-75 Aralığı</span>
+          <span class="stat-label">✅ Ortalama Güven</span>
+          <span class="stat-value highlight">
+            %{{ "%.1f"|format((coupons.high_odds|sum(attribute='value') / coupons.high_odds|length) if coupons.high_odds|length > 0 else 0) }}
+          </span>
         </div>
       </div>
 
@@ -429,12 +433,14 @@
       {% if coupons.super_odds and is_premium %}
       <div class="coupon-stats">
         <div class="stat-row">
-          <span class="stat-label">📊 Toplam Oran</span>
-          <span class="stat-value">~15-30</span>
+          <span class="stat-label">📊 Maç Sayısı</span>
+          <span class="stat-value">{{ coupons.super_odds|length }} Maç</span>
         </div>
         <div class="stat-row">
-          <span class="stat-label">✅ Eşik</span>
-          <span class="stat-value highlight">%62-68 Aralığı</span>
+          <span class="stat-label">✅ Ortalama Güven</span>
+          <span class="stat-value highlight">
+            %{{ "%.1f"|format((coupons.super_odds|sum(attribute='value') / coupons.super_odds|length) if coupons.super_odds|length > 0 else 0) }}
+          </span>
         </div>
       </div>
 
