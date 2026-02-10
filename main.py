@@ -1,3 +1,4 @@
+
 from fastapi import FastAPI, Request, Form, Cookie, UploadFile, File
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -754,46 +755,44 @@ async def forgot_password(
     email: str = Form(...)
 ):
     """Şifre sıfırlama linki gönder"""
-    try:
-        # Kullanıcıyı bul
-        with get_connection() as conn:
-            result = conn.execute(
-                text("SELECT id FROM users WHERE email = :email"),
-                {"email": email}
-            ).fetchone()
-        
-        if not result:
-            return templates.TemplateResponse(
-                "forgot_password.html",
-                {"request": request, "error": "Bu e-posta adresi kayıtlı değil"}
-            )
-        
-        user_id = result[0]
-        
-        # Token oluştur
-        ip_address = request.client.host
-        token = reset_manager.create_token(user_id, ip_address)
-        
-        # Reset linki oluştur
-        reset_link = f"{request.base_url}reset-password?token={token}"
-        
-        print(f"🔑 Reset link oluşturuldu: {reset_link}")
-        
-        # Email gönder
-        try:
-            reset_manager.send_reset_email(email, reset_link)
-            print(f"✅ Reset email gönderildi: {email}")
-        except Exception as e:
-            print(f"⚠️ Email gönderilemedi: {e}")
-            print(f"🔑 Manuel reset link: {reset_link}")
-        
+    # Kullanıcıyı bul
+    with get_connection() as conn:
+        result = conn.execute(
+            text("SELECT id FROM users WHERE email = :email"),
+            {"email": email}
+        ).fetchone()
+    
+    if not result:
         return templates.TemplateResponse(
             "forgot_password.html",
-            {
-                "request": request,
-                "success": f"Şifre sıfırlama linki {email} adresinize gönderildi! Email kutunuzu kontrol edin."
-            }
+            {"request": request, "error": "Bu e-posta adresi kayıtlı değil"}
         )
+    
+    user_id = result[0]
+    
+    # Token oluştur
+    ip_address = request.client.host
+    token = reset_manager.create_token(user_id, ip_address)
+    
+    # Reset linki oluştur
+    reset_link = f"{request.base_url}reset-password?token={token}"
+    
+    # Email gönder
+    try:
+        reset_manager.send_reset_email(email, reset_link)
+        print(f"✅ Reset email gönderildi: {email}")
+    except Exception as e:
+        print(f"⚠️ Email gönderilemedi: {e}")
+        print(f"🔑 Manuel Reset link: {reset_link}")
+    
+    return templates.TemplateResponse(
+        "forgot_password.html",
+        {
+            "request": request,
+            "success": f"Şifre sıfırlama linki {email} adresinize gönderildi! Email kutunuzu kontrol edin."
+        }
+    )
+
     except Exception as e:
         print(f"❌ Forgot password hatası: {e}")
         import traceback
@@ -841,6 +840,8 @@ def reset_password_page(request: Request, token: str = None):
         import traceback
         traceback.print_exc()
         return HTMLResponse(f"<h1>Hata</h1><pre>{str(e)}\n\n{traceback.format_exc()}</pre>", status_code=500)
+
+
 
 @app.post("/reset-password")
 async def reset_password(
@@ -906,6 +907,7 @@ async def reset_password(
                 "token": token
             }
         )
+
 
 @app.post("/submit-payment")
 async def submit_payment(
