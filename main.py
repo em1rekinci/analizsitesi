@@ -143,7 +143,7 @@ def safe_request(url, params=None, retries=2):
 # 🔥 YENİ v3.0 - %83.5 BAŞARI HEDEFLİ MATEMATİK
 # =====================
 
-  def get_team_stats(team_id):
+def get_team_stats(team_id):
     """
     ✅ 3. ÖZELLİK: EV/DEPLASMAN FORMU AYRIMI
     Son 10 maçı ev ve deplasman olarak ayırır
