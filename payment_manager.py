@@ -1,63 +1,19 @@
 import secrets
 import os
-import requests   # <-- BU SATIR EKSİKTİ
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from sqlalchemy import text
 from db_manager import get_connection
+from sender import send_payment_approved_email, send_payment_rejected_email
 
 
 class PaymentManager:
-    
+    """Ödeme yönetimi - Havale/EFT dekont kontrolü"""
     
     def __init__(self, upload_dir="uploads/receipts"):
         self.upload_dir = Path(upload_dir)
         self.upload_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Email ayarları - Environment variables'dan al
-        import os
-        self.resend_api_key = os.getenv("RESEND_API_KEY")
-        self.email_from = "Ekinci Analiz <no-reply@ekincianaliz.online>"
-
-        if not self.resend_api_key:
-            print("⚠️ RESEND_API_KEY tanımlı değil")
-        else:
-            print("📧 Resend email sistemi aktif")
-
-
-    
-    def send_email(self, to_email, subject, body):
-        if not self.resend_api_key:
-            print("❌ Mail gönderilemedi: RESEND_API_KEY yok")
-            return False
-
-        try:
-            response = requests.post(
-                "https://api.resend.com/emails",
-                headers={
-                    "Authorization": f"Bearer {self.resend_api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "from": self.email_from,
-                    "to": [to_email],
-                    "subject": subject,
-                    "html": body,
-                },
-                timeout=15,
-            )
-
-            if response.status_code == 200:
-                print(f"✅ Mail gönderildi: {to_email}")
-                return True
-            else:
-                print(f"❌ Mail hatası ({response.status_code}): {response.text}")
-                return False
-
-        except Exception as e:
-            print(f"❌ Mail gönderme exception: {e}")
-            return False
-
+        print("💾 Payment Manager başlatıldı")
     
     def generate_payment_ref(self, user_id):
         """Benzersiz ödeme referans kodu oluştur"""
@@ -193,83 +149,60 @@ class PaymentManager:
         """Ödemeyi onayla ve kullanıcıya bilgilendirme maili gönder"""
         try:
             with get_connection() as conn:
+                # Ödeme bilgilerini al
                 result = conn.execute(
-                    text("SELECT user_id, email, payment_ref, amount, status FROM payments WHERE id = :pid"),
+                    text("SELECT user_id, email, amount, status FROM payments WHERE id = :pid"),
                     {"pid": payment_id}
                 ).fetchone()
                 
                 if not result:
                     return {"success": False, "error": "Ödeme bulunamadı"}
                 
-                user_id, user_email, payment_ref, amount, current_status = result
+                user_id, user_email, amount, current_status = result
                 
                 if current_status == "approved":
                     return {"success": False, "error": "Bu ödeme zaten onaylanmış"}
                 
+                # Premium süresini hesapla (1 ay = 30 gün)
+                premium_until = datetime.now() + timedelta(days=30)
+                premium_until_str = premium_until.strftime("%Y-%m-%d")
+                
+                # Kullanıcıyı premium yap
+                conn.execute(
+                    text("""
+                        UPDATE users 
+                        SET is_premium = 1, premium_until = :premium_until 
+                        WHERE id = :uid
+                    """),
+                    {"premium_until": premium_until_str, "uid": user_id}
+                )
+                
+                # Ödemeyi onayla
                 conn.execute(
                     text("""
                         UPDATE payments 
-                        SET status = 'approved', approved_at = :approved, approved_by = :by
+                        SET status = 'approved', approved_at = :now, approved_by = :admin
                         WHERE id = :pid
                     """),
-                    {
-                        "approved": datetime.now().isoformat(),
-                        "by": approved_by,
-                        "pid": payment_id
-                    }
+                    {"now": datetime.now().isoformat(), "admin": approved_by, "pid": payment_id}
                 )
+                
                 conn.commit()
             
-            print(f"✅ Ödeme onaylandı: {payment_id}")
+            print(f"✅ Ödeme onaylandı: Payment #{payment_id} - User #{user_id}")
             
-            # ✅ ONAYLAMA EMAİLİ GÖNDER
+            # ✅ Email gönder (sender.py üzerinden)
             try:
-                subject = "🎉 Premium Üyeliğiniz Onaylandı - Ekinci Analiz"
-                body = f"""
-                <html>
-                <body style="font-family: Arial, sans-serif; background: #f3f4f6; padding: 20px;">
-                    <div style="max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px;">
-                        <h2 style="color: #10b981;">🎉 Premium Üyeliğiniz Onaylandı!</h2>
-                        <p>Sayın Kullanıcı,</p>
-                        <p>Ödemeniz başarıyla onaylanmıştır. Artık premium özelliklerimizden yararlanabilirsiniz!</p>
-                        
-                        <div style="background: #d1fae5; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #10b981;">
-                            <strong>✅ Ödeme Referansı:</strong> {payment_ref}<br>
-                            <strong>💰 Tutar:</strong> {amount}₺<br>
-                            <strong>📅 Onaylanma Tarihi:</strong> {datetime.now().strftime('%d.%m.%Y %H:%M')}
-                        </div>
-                        
-                        <div style="background: #fef3c7; padding: 15px; border-radius: 8px; margin: 20px 0;">
-                            <h3 style="color: #92400e; margin-bottom: 10px;">🌟 Premium Özellikleriniz:</h3>
-                            <ul style="color: #92400e; margin: 0; padding-left: 20px;">
-                                <li>Sınırsız analiz erişimi</li>
-                                <li>Özel istatistikler ve raporlar</li>
-                                <li>Öncelikli destek</li>
-                                <li>Tüm premium içeriklere erişim</li>
-                            </ul>
-                        </div>
-                        
-                        <p style="margin-top: 20px;">
-                            <strong>Şimdi hesabınıza giriş yaparak premium özelliklerimizi keşfedebilirsiniz!</strong>
-                        </p>
-                        
-                        <p>İyi analizler dileriz! ⚽</p>
-                        
-                        <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;">
-                        <p style="font-size: 12px; color: #6b7280;">
-                            Sorularınız için: <a href="mailto:ekincianaliz@gmail.com">ekincianaliz@gmail.com</a><br>
-                            Ekinci Analiz - Premium Futbol Analiz Platformu
-                        </p>
-                    </div>
-                </body>
-                </html>
-                """
+                email_sent = send_payment_approved_email(
+                    to_email=user_email,
+                    premium_until=premium_until.strftime("%d.%m.%Y")
+                )
                 
-                email_result = self.send_email(user_email, subject, body)
-                if email_result:
-                    print(f"✅ Onaylama maili gönderildi: {user_email}")
+                if email_sent:
+                    print(f"✅ Onaylama emaili gönderildi: {user_email}")
                 else:
-                    print(f"⚠️ Mail gönderilemedi ama ödeme onaylandı: {user_email}")
+                    print(f"⚠️ Email gönderilemedi ama ödeme onaylandı: {user_email}")
+                    
             except Exception as email_error:
                 print(f"⚠️ Email hatası (ödeme yine de onaylandı): {email_error}")
                 import traceback
@@ -279,6 +212,8 @@ class PaymentManager:
             
         except Exception as e:
             print(f"⚠️ Ödeme onaylama hatası: {e}")
+            import traceback
+            traceback.print_exc()
             return {"success": False, "error": str(e)}
     
     def reject_payment(self, payment_id, reason=""):
@@ -321,58 +256,21 @@ class PaymentManager:
             
             print(f"✅ Ödeme reddedildi: {payment_id}")
             
-            # Email göndermeyi dene (başarısız olsa bile rejection geçerli)
-            print(f"📧 Email gönderiliyor...")
+            # ✅ Email gönder (sender.py üzerinden)
             try:
-                subject = "❌ Ödemeniz Reddedildi - Ekinci Analiz"
-                body = f"""
-                <html>
-                <body style="font-family: Arial, sans-serif; background: #f3f4f6; padding: 20px;">
-                    <div style="max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px;">
-                        <h2 style="color: #dc2626;">❌ Ödeme Reddedildi</h2>
-                        <p>Sayın Kullanıcı,</p>
-                        <p>Ne yazık ki ödemeniz aşağıdaki nedenle reddedilmiştir:</p>
-                        
-                        <div style="background: #fee2e2; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #dc2626;">
-                            <strong>📄 Referans:</strong> {payment_ref}<br>
-                            <strong>💰 Tutar:</strong> {amount}₺<br>
-                            <strong>❌ Ret Nedeni:</strong> {reason if reason else "Dekont kontrolünde uyumsuzluk tespit edildi"}
-                        </div>
-                        
-                        <div style="background: #fef3c7; padding: 15px; border-radius: 8px; margin: 20px 0;">
-                            <h3 style="color: #92400e; margin-bottom: 10px;">ℹ️ Ne Yapmalısınız?</h3>
-                            <ul style="color: #92400e; margin: 0; padding-left: 20px;">
-                                <li>Ödeme dekontunuzu kontrol edin</li>
-                                <li>Doğru tutarı gönderdiğinizden emin olun</li>
-                                <li>Dekont fotoğrafının net olduğundan emin olun</li>
-                                <li>Tekrar ödeme yaparak yeniden deneyin</li>
-                            </ul>
-                        </div>
-                        
-                        <p>Sorularınız için bizimle iletişime geçebilirsiniz:</p>
-                        <p style="text-align: center; margin: 20px 0;">
-                            <a href="mailto:ekincianaliz@gmail.com" 
-                               style="background: #3b82f6; color: white; padding: 12px 24px; 
-                                      text-decoration: none; border-radius: 6px; display: inline-block;">
-                                📧 İletişime Geç
-                            </a>
-                        </p>
-                        
-                        <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;">
-                        <p style="font-size: 12px; color: #6b7280;">
-                            Ekinci Analiz - Premium Futbol Analiz Platformu<br>
-                            E-posta: <a href="mailto:ekincianaliz@gmail.com">ekincianaliz@gmail.com</a>
-                        </p>
-                    </div>
-                </body>
-                </html>
-                """
+                print(f"📧 Email gönderiliyor...")
+                email_sent = send_payment_rejected_email(
+                    to_email=user_email,
+                    payment_ref=payment_ref,
+                    amount=amount,
+                    reason=reason
+                )
                 
-                email_result = self.send_email(user_email, subject, body)
-                if email_result:
-                    print(f"✅ Reddetme maili gönderildi: {user_email}")
+                if email_sent:
+                    print(f"✅ Reddetme emaili gönderildi: {user_email}")
                 else:
-                    print(f"⚠️ Mail gönderilemedi ama ödeme reddedildi: {user_email}")
+                    print(f"⚠️ Email gönderilemedi ama ödeme reddedildi: {user_email}")
+                    
             except Exception as email_error:
                 print(f"⚠️ Email hatası (ödeme yine de reddedildi): {email_error}")
                 import traceback

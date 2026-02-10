@@ -47,7 +47,23 @@
       border-color: #38bdf8;
     }
     
-    /* ✅ YENİ: Checkbox stili */
+    .forgot-password-link {
+      text-align: right;
+      margin-top: 6px;
+    }
+    
+    .forgot-password-link a {
+      font-size: 13px;
+      color: #38bdf8;
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+    
+    .forgot-password-link a:hover {
+      color: #7dd3fc;
+      text-decoration: underline;
+    }
+    
     .remember-me {
       display: flex;
       align-items: center;
@@ -148,9 +164,11 @@
         required
         autocomplete="current-password"
       >
+      <div class="forgot-password-link">
+        <a href="/forgot-password">Şifremi unuttum</a>
+      </div>
     </div>
 
-    <!-- ✅ YENİ: Beni Hatırla Checkbox -->
     <div class="remember-me">
       <input 
         type="checkbox" 

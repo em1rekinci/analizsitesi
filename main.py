@@ -9,6 +9,9 @@ from collections import defaultdict
 from cache_manager import CacheManager
 from user_manager import UserManager
 from payment_manager import PaymentManager
+from password_reset_manager import PasswordResetManager  # ✅ YENİ
+from sqlalchemy import text
+from db_manager import get_connection
 import statistics
 
 app = FastAPI()
@@ -35,6 +38,7 @@ ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "34emr256.")
 cache_manager = CacheManager()
 user_manager = UserManager()
 payment_manager = PaymentManager()
+reset_manager = PasswordResetManager()  # ✅ YENİ
 
 # Memory cache
 TEAM_CACHE = {}
@@ -240,399 +244,344 @@ def check_consistency(goals_list):
     
     Örnek:
     [3, 2, 3, 2, 3] → std_dev = 0.5 → Tutarlı = 1.0
-    [5, 0, 6, 0, 4] → std_dev = 2.8 → Tutarsız = 0.6
+    [5, 0, 6, 0, 4] → std_dev = 2.8 → Tutarsız = 0.3
     """
     if len(goals_list) < 3:
-        return 1.0  # Yeterli veri yok, nötr
+        return 0.8  # Varsayılan
     
     try:
-        std_dev = statistics.stdev(goals_list)
-        mean = statistics.mean(goals_list)
+        avg = sum(goals_list) / len(goals_list)
+        variance = sum((x - avg) ** 2 for x in goals_list) / len(goals_list)
+        std_dev = variance ** 0.5
         
-        # Varyasyon katsayısı (CV)
-        if mean > 0:
-            cv = std_dev / mean
+        # Std dev ne kadar düşükse o kadar tutarlı
+        if std_dev < 1.0:
+            return 1.0  # Çok tutarlı
+        elif std_dev < 1.5:
+            return 0.8  # Tutarlı
+        elif std_dev < 2.0:
+            return 0.6  # Orta
         else:
-            cv = 0
-        
-        # CV düşükse tutarlı, yüksekse tutarsız
-        if cv < 0.3:
-            return 1.15  # Çok tutarlı → +15% güven
-        elif cv < 0.5:
-            return 1.05  # Tutarlı → +5% güven
-        elif cv < 0.8:
-            return 1.0   # Normal
-        elif cv < 1.2:
-            return 0.92  # Tutarsız → -8% güven
-        else:
-            return 0.80  # Çok tutarsız → -20% güven
+            return 0.4  # Tutarsız
     except:
-        return 1.0
+        return 0.8
 
-def ms_probs(home_id, away_id, hs, as_, is_home_match=True):
+def analyze_match_style(home_stats, away_stats):
     """
-    ✅ 1. ÖZELLİK: Rakip kalite faktörü
-    ✅ 3. ÖZELLİK: Ev/Deplasman formu kullanımı
-    ✅ 2. ÖZELLİK: Form tutarlılığı entegrasyonu
-    """
+    ✅ 4. ÖZELLİK: OYUN TARZI UYUMU
     
-    # ✅ Ev/Deplasman formu kullan
-    if is_home_match:
-        home_scored = hs["home_avg_scored"]
-        away_scored = as_["away_avg_scored"]
+    Senaryolar:
+    1. Hücum vs Hücum → Over +15%, KG +10%
+    2. Savunma vs Savunma → Over -20%, KG -10%
+    3. Hücum vs Savunma → Normal
+    """
+    # Takım tarzını belirle
+    home_attack = home_stats["home_avg_scored"]
+    away_attack = away_stats["away_avg_scored"]
+    
+    home_defense = home_stats["home_avg_conceded"]
+    away_defense = away_stats["away_avg_conceded"]
+    
+    # Hücumcu mu savunmacı mı?
+    home_offensive = home_attack > 1.5 and home_defense > 1.0
+    away_offensive = away_attack > 1.5 and away_defense > 1.0
+    
+    home_defensive = home_attack < 1.2 and home_defense < 1.0
+    away_defensive = away_attack < 1.2 and away_defense < 1.0
+    
+    # Senaryo 1: Hücum vs Hücum
+    if home_offensive and away_offensive:
+        return {"over_boost": 15, "kg_boost": 10, "style": "Hücum vs Hücum"}
+    
+    # Senaryo 2: Savunma vs Savunma
+    elif home_defensive and away_defensive:
+        return {"over_boost": -20, "kg_boost": -10, "style": "Savunma vs Savunma"}
+    
+    # Senaryo 3: Karışık
     else:
-        home_scored = hs["avg_scored"]
-        away_scored = as_["avg_scored"]
-    
-    # Temel fark
-    diff = home_scored - away_scored
-    
-    # ✅ 1. ÖZELLİK: Rakip kalite kontrolü
-    away_strength = get_team_strength(away_id)
-    home_strength = get_team_strength(home_id)
-    
-    # Deplasman takımı çok güçlüyse diff'i azalt
-    if away_strength > 75:  # Top 6 seviye (City, Liverpool, Arsenal vb)
-        diff *= 0.3  # %70 azalt
-    elif away_strength > 65:  # Top 10 seviye
-        diff *= 0.5  # %50 azalt
-    elif away_strength > 55:  # Orta üst
-        diff *= 0.7  # %30 azalt
-    
-    # Ev sahibi çok zayıfsa
-    if home_strength < 40:
-        diff *= 0.8
-    
-    # ✅ 2. ÖZELLİK: Form tutarlılığı uygula
-    home_consistency = check_consistency(hs["goals_list"])
-    away_consistency = check_consistency(as_["goals_list"])
-    
-    diff *= home_consistency
-    diff *= (2 - away_consistency)  # Rakip tutarsızsa avantaj
-    
-    ms1 = max(18, 50 + diff * 11)
-    ms2 = max(18, 50 - diff * 11)
-    msx = max(12, 100 - (ms1 + ms2))
-    
-    t = ms1 + msx + ms2
-    
-    return {
-        "MS1": round(ms1 / t * 100, 2),
-        "MS0": round(msx / t * 100, 2),
-        "MS2": round(ms2 / t * 100, 2)
-    }
+        return {"over_boost": 0, "kg_boost": 0, "style": "Karışık"}
 
-def over_probs(hs, as_):
-    """
-    ✅ 4. ÖZELLİK: OYUN TARZI UYUMU
-    İki hücum takımı → Over yükselir
-    İki savunma takımı → Under yükselir
-    """
-    base = (hs["over25"] + as_["over25"]) / 2
-    
-    # ✅ Oyun tarzı uyumu
-    home_attack = hs["avg_scored"]
-    away_attack = as_["avg_scored"]
-    
-    # İki takım da hücum odaklıysa
-    if home_attack > 2.5 and away_attack > 2.5:
-        base *= 1.15  # +15% Over bonusu
-    
-    # İki takım da savunma odaklıysa
-    elif home_attack < 1.2 and away_attack < 1.2:
-        base *= 0.80  # -20% Over (Under'a kaydir)
-    
-    # Bir takım çok gol atıyor, diğeri çok yiyor
-    home_defense = hs["avg_conceded"]
-    away_defense = as_["avg_conceded"]
-    
-    if (home_attack > 2.5 and away_defense > 1.8) or (away_attack > 2.5 and home_defense > 1.8):
-        base *= 1.10  # +10% Over bonusu
-    
-    return {"O25": min(round(base, 2), 95)}
-
-def kg_probs(hs, as_):
-    """
-    ✅ 4. ÖZELLİK: OYUN TARZI UYUMU
-    İki hücum takımı → KG yükselir
-    Bir takım çok savunmacıysa → KG düşer
-    """
-    base = (hs["kg"] + as_["kg"]) / 2
-    
-    # ✅ Oyun tarzı uyumu
-    home_attack = hs["avg_scored"]
-    away_attack = as_["avg_scored"]
-    
-    # İki takım da hücum odaklıysa
-    if home_attack > 2.0 and away_attack > 2.0:
-        base *= 1.12  # +12% KG bonusu
-    
-    # Bir takım çok savunmacıysa
-    if home_attack < 1.0 or away_attack < 1.0:
-        base *= 0.85  # -15% KG
-    
-    return {"KG": min(round(base, 2), 90)}
-
-def fh_probs(hs, as_):
-    """
-    ✅ Basit ortalama - oyun tarzı etkisi az
-    """
-    o = (hs["fh15"] + as_["fh15"]) / 2
-    return {"FH15": round(o, 2)}
-
-def generate_coupons(picks):
-    """
-    ✅ GÜNCELLEME: Daha gerçekçi eşikler
-    
-    1️⃣ GÜNÜN KOMBİNESİ: %75+ (En güvenilir 3 tahmin)
-    2️⃣ YÜKSEK ORAN: %68-75 (4 tahmin)
-    3️⃣ SÜPER ORAN: %62-68 (5 tahmin)
-    """
-    if not picks:
-        return {
-            "daily": [],
-            "high_odds": [],
-            "super_odds": []
-        }
-    
-    # En yüksek güvenilirlikten sırala
-    sorted_picks = sorted(picks, key=lambda x: x['value'], reverse=True)
-    
-    # 1️⃣ GÜNÜN KOMBİNESİ: %75 ve üstü (en fazla 3 tane)
-    daily_coupon = [p for p in sorted_picks if p['value'] >= 75][:3]
-    
-    # 2️⃣ YÜKSEK ORAN: %68-75 arası (en fazla 4 tane)
-    high_odds_coupon = [p for p in sorted_picks if 68 <= p['value'] < 75][:4]
-    
-    # 3️⃣ SÜPER ORAN: %62-68 arası (en fazla 5 tane)
-    super_odds_coupon = [p for p in sorted_picks if 62 <= p['value'] < 68][:5]
-    
-    return {
-        "daily": daily_coupon,
-        "high_odds": high_odds_coupon,
-        "super_odds": super_odds_coupon
-    }
-
-def build_markets(match, picks, league_code):
-    """
-    ✅ Her maçın tüm marketlerini hesapla
-    ✅ Liga ağırlığı uygula
-    ✅ %65+ olan EN YÜKSEK marketi picks'e ekle
-    """
+def calculate_predictions(match):
     home_id = match["homeTeam"]["id"]
     away_id = match["awayTeam"]["id"]
+    competition_code = match["competition"]["code"]
+
+    # ✅ 1. TAKIM GÜÇLERINI HESAPLA
+    home_strength = get_team_strength(home_id)
+    away_strength = get_team_strength(away_id)
     
-    hs = get_team_stats(home_id)
-    as_ = get_team_stats(away_id)
-
-    # ✅ Yeni formüllerle hesapla
-    ms = ms_probs(home_id, away_id, hs, as_, is_home_match=True)
-    over = over_probs(hs, as_)
-    kg = kg_probs(hs, as_)
-    fh = fh_probs(hs, as_)
-
-    # Liga ağırlığı uygula
-    weight = LEAGUE_WEIGHT.get(league_code, 1.0)
+    # Takım güçleri arası fark
+    strength_diff = abs(home_strength - away_strength)
     
-    # Tüm piyasaları ağırlıklandır
-    all_markets = {}
-    for market, value in {**ms, **over, **kg, **fh}.items():
-        weighted_value = min(value * weight, 95)
-        all_markets[market] = round(weighted_value, 2)
-
-    # ✅ En yüksek piyasayı bul
-    best_key, best_value = max(all_markets.items(), key=lambda x: x[1])
+    # ✅ RAKIP KALİTE FAKTÖRÜ
+    # Güçlü rakiplere karşı diff'i azalt
+    opponent_quality_factor = 1.0
+    if strength_diff < 20:  # Dengeli maç (Liverpool-City gibi)
+        opponent_quality_factor = 0.6  # %40 azaltma
+    elif strength_diff < 35:  # Orta fark
+        opponent_quality_factor = 0.8  # %20 azaltma
+    else:  # Büyük fark
+        opponent_quality_factor = 1.0  # Normal
     
-    # ✅ Sadece en yüksek piyasa %65+ ise picks'e ekle
-    if best_value >= 65:
-        picks.append({
-            "match": f"{match['homeTeam']['name']} - {match['awayTeam']['name']}",
-            "market": best_key,
-            "value": best_value
-        })
-
-    all_markets["best"] = best_key
-    all_markets["best_value"] = best_value
-
-    return all_markets
+    # İstatistikleri al
+    home_stats = get_team_stats(home_id)
+    away_stats = get_team_stats(away_id)
+    
+    # ✅ 2. FORM TUTARLILIĞI
+    home_consistency = check_consistency(home_stats["goals_list"])
+    away_consistency = check_consistency(away_stats["goals_list"])
+    avg_consistency = (home_consistency + away_consistency) / 2
+    
+    # ✅ 3. EV/DEPLASMAN AYRIMI
+    home_attack = home_stats["home_avg_scored"]
+    away_attack = away_stats["away_avg_scored"]
+    home_defense = home_stats["home_avg_conceded"]
+    away_defense = away_stats["away_avg_conceded"]
+    
+    # ✅ 4. OYUN TARZI UYUMU
+    style_analysis = analyze_match_style(home_stats, away_stats)
+    
+    # Maç skorları tahmini (Poisson benzeri)
+    diff = (home_attack + away_defense) - (away_attack + home_defense)
+    
+    # ✅ RAKIP KALİTE FAKTÖRÜ UYGULA
+    diff *= opponent_quality_factor
+    
+    # Liga ağırlığı
+    league_mult = LEAGUE_WEIGHT.get(competition_code, 1.0)
+    diff *= league_mult
+    
+    # MS1, MS0, MS2
+    if diff > 0.8:
+        ms1_base = 65 + min(diff * 8, 25)
+        ms0_base = 20
+        ms2_base = 15
+    elif diff > 0.3:
+        ms1_base = 55 + min(diff * 10, 20)
+        ms0_base = 25
+        ms2_base = 20
+    elif diff < -0.8:
+        ms2_base = 65 + min(abs(diff) * 8, 25)
+        ms0_base = 20
+        ms1_base = 15
+    elif diff < -0.3:
+        ms2_base = 55 + min(abs(diff) * 10, 20)
+        ms0_base = 25
+        ms1_base = 20
+    else:  # Dengeli maç
+        ms0_base = 40
+        ms1_base = 30
+        ms2_base = 30
+    
+    # ✅ FORM TUTARLILIĞI UYGULA
+    # Tutarlı formda ise tahmin güvenini artır
+    ms1 = ms1_base * (0.85 + avg_consistency * 0.15)
+    ms0 = ms0_base
+    ms2 = ms2_base * (0.85 + avg_consistency * 0.15)
+    
+    # Over 2.5
+    avg_goals = home_attack + away_attack
+    over_base = 30 + min(avg_goals * 15, 50)
+    
+    # ✅ OYUN TARZI BOOST UYGULA
+    over_base += style_analysis["over_boost"]
+    
+    # Over normalize
+    over = max(20, min(90, over_base))
+    
+    # KG (Karşılıklı Gol)
+    kg_base = (home_stats["kg"] + away_stats["kg"]) / 2
+    
+    # ✅ OYUN TARZI BOOST UYGULA
+    kg_base += style_analysis["kg_boost"]
+    
+    kg = max(15, min(85, kg_base))
+    
+    # İlk Yarı 1.5+
+    fh_base = (home_stats["fh15"] + away_stats["fh15"]) / 2
+    fh15 = max(15, min(75, fh_base))
+    
+    # Normalize (toplam 100%)
+    total = ms1 + ms0 + ms2
+    if total > 0:
+        ms1 = (ms1 / total) * 100
+        ms0 = (ms0 / total) * 100
+        ms2 = (ms2 / total) * 100
+    
+    # En yüksek değer ve market
+    market_values = {
+        "MS1": ms1,
+        "MS0": ms0,
+        "MS2": ms2,
+        "O25": over,
+        "KG": kg,
+        "FH15": fh15
+    }
+    
+    best_market = max(market_values, key=market_values.get)
+    best_value = market_values[best_market]
+    
+    return {
+        "MS1": round(ms1),
+        "MS0": round(ms0),
+        "MS2": round(ms2),
+        "O25": round(over),
+        "KG": round(kg),
+        "FH15": round(fh15),
+        "best": best_market,
+        "best_value": round(best_value),
+        
+        # Debug bilgileri
+        "strength_diff": round(strength_diff, 1),
+        "opponent_quality_factor": round(opponent_quality_factor, 2),
+        "consistency": round(avg_consistency, 2),
+        "style": style_analysis["style"]
+    }
 
 def fetch_all_matches():
-    grouped = defaultdict(list)
-    picks = []
+    """
+    Tüm ligleri çek ve cache'le
+    """
+    print("\n🔄 Maçlar çekiliyor...")
+    all_matches = defaultdict(list)
     today = date.today().isoformat()
     
-    print(f"\n{'='*60}")
-    print(f"🔄 MAÇ ÇEKME BAŞLADI - {today}")
-    print(f"✨ v3.0 ULTRA - %83.5 Başarı Hedefli Matematik")
-    print(f"{'='*60}")
-    print(f"📌 Aktif Özellikler:")
-    print(f"   1️⃣ Rakip Kalite Faktörü (Liverpool-City fix)")
-    print(f"   2️⃣ Form Tutarlılığı (Standart sapma)")
-    print(f"   3️⃣ Ev/Deplasman Formu Ayrımı")
-    print(f"   4️⃣ Oyun Tarzı Uyumu (Over/KG optimize)")
-    print(f"{'='*60}\n")
-
-    for league, code in COMPETITIONS.items():
-        print(f"📊 {league} ({code}) kontrol ediliyor...")
+    for league_name, league_code in COMPETITIONS.items():
+        url = f"{BASE_URL}/competitions/{league_code}/matches"
+        params = {"dateFrom": today, "dateTo": today}
         
-        data = safe_request(
-            f"{BASE_URL}/competitions/{code}/matches",
-            {"dateFrom": today, "dateTo": today}
-        )
-        
+        data = safe_request(url, params)
         matches = data.get("matches", [])
         
         if not matches:
-            print(f"   ℹ️ Bugün maç yok\n")
+            print(f"   ℹ️ {league_name}: Maç yok")
             continue
         
-        print(f"   ✅ {len(matches)} maç bulundu")
-
-        for m in matches:
-            try:
-                dt = datetime.fromisoformat(
-                    m["utcDate"].replace("Z", "+00:00")
-                ).astimezone(TR_TZ)
-
-                m["time"] = dt.strftime("%H:%M")
-                m["league"] = league
-                m["markets"] = build_markets(m, picks, code)
-                
-                grouped[league].append(m)
-                print(f"      • {m['homeTeam']['name']} - {m['awayTeam']['name']} ({m['time']})")
-            except Exception as e:
-                print(f"      ❌ Maç işlenirken hata: {str(e)}")
-                continue
+        print(f"   📊 {league_name}: {len(matches)} maç")
         
-        print()
+        for match in matches:
+            pred = calculate_predictions(match)
+            
+            match_data = {
+                "time": datetime.fromisoformat(match["utcDate"].replace("Z", "+00:00"))
+                            .astimezone(TR_TZ).strftime("%H:%M"),
+                "homeTeam": {"name": match["homeTeam"]["shortName"], "id": match["homeTeam"]["id"]},
+                "awayTeam": {"name": match["awayTeam"]["shortName"], "id": match["awayTeam"]["id"]},
+                "markets": pred
+            }
+            all_matches[league_name].append(match_data)
     
-    print(f"{'='*60}")
-    print(f"✅ ÇEKME TAMAMLANDI")
-    print(f"   📌 Toplam {sum(len(v) for v in grouped.values())} maç")
-    print(f"   ⭐ {len(picks)} yüksek değerli tahmin (%65+)")
-    print(f"   🎯 Hedef Başarı: %83.5")
-    print(f"{'='*60}\n")
-
-    # ✅ YENİ: Kuponları oluştur
-    coupons = generate_coupons(picks)
-    print(f"🎫 KUPONLAR OLUŞTURULDU:")
-    print(f"   🏆 Günün Kombinesi: {len(coupons['daily'])} maç")
-    print(f"   🎯 Yüksek Oran: {len(coupons['high_odds'])} maç")
-    print(f"   🔥 Süper Oran: {len(coupons['super_odds'])} maç")
-    print(f"{'='*60}\n")
-
+    # Oynanabilir tahminler (75%+)
+    picks = []
+    for league, matches in all_matches.items():
+        for m in matches:
+            match_name = f"{m['homeTeam']['name']} - {m['awayTeam']['name']}"
+            markets = m["markets"]
+            best_market = markets["best"]
+            best_value = markets["best_value"]
+            
+            if best_value >= 75:
+                picks.append({
+                    "match": match_name,
+                    "market": best_market,
+                    "value": best_value
+                })
+    
+    # Tahminleri değere göre sırala
+    picks.sort(key=lambda x: x["value"], reverse=True)
+    
+    # ✅ KUPON OLUŞTURMA (3 farklı kupon)
+    coupons = {
+        "daily": [],       # Günün Kombinesi (en yüksek 3 tahmin)
+        "high_odds": [],   # Yüksek Oran (75-79% arası 4 tahmin)
+        "super_odds": []   # Süper Oran (70-74% arası 5 tahmin)
+    }
+    
+    # 1. Günün Kombinesi: En yüksek 3 tahmin (80%+)
+    coupons["daily"] = [p for p in picks if p["value"] >= 80][:3]
+    
+    # 2. Yüksek Oran: 75-79% arası 4 tahmin
+    high_odds_pool = [p for p in picks if 75 <= p["value"] < 80]
+    coupons["high_odds"] = high_odds_pool[:4]
+    
+    # 3. Süper Oran: 70-74% arası 5 tahmin
+    super_odds_pool = [p for p in picks if 70 <= p["value"] < 75]
+    coupons["super_odds"] = super_odds_pool[:5]
+    
+    # Cache'e kaydet (kuponlarla birlikte)
+    cache_manager.save_matches_cache(dict(all_matches), picks, coupons)
     cache_manager.save_teams_cache({str(k): v for k, v in TEAM_CACHE.items()})
-    cache_manager.save_matches_cache(grouped, picks, coupons)  # ✅ Kuponları da kaydet
+    
+    print(f"\n✅ Toplam {len(picks)} oynanabilir tahmin")
+    print(f"   📦 Kupon 1 (Günün Kombinesi): {len(coupons['daily'])} maç")
+    print(f"   📦 Kupon 2 (Yüksek Oran): {len(coupons['high_odds'])} maç")
+    print(f"   📦 Kupon 3 (Süper Oran): {len(coupons['super_odds'])} maç")
+    print("=" * 60)
+
+# =====================
+# ROUTES
+# =====================
 
 @app.get("/", response_class=HTMLResponse)
+def root():
+    return RedirectResponse(url="/dashboard")
+
 @app.get("/dashboard", response_class=HTMLResponse)
 def dashboard(request: Request, session_id: str = Cookie(None)):
-    user = user_manager.verify_session(session_id) if session_id else None
+    user = get_current_user(session_id)
     is_premium = user["is_premium"] if user else False
-
+    
     cached = cache_manager.get_matches_cache()
-
+    
     if not cached:
         fetch_all_matches()
         cached = cache_manager.get_matches_cache()
-        if not cached:
-            return HTMLResponse("<h1>Veriler hazırlanıyor, birkaç saniye sonra yenileyin</h1>")
-
+    
     all_matches = cached.get("matches", {})
     all_picks = cached.get("picks", [])
-    coupons = cached.get("coupons", {"daily": [], "high_odds": [], "super_odds": []})  # ✅ Kuponları al
-
-    # =====================
-    # FREE MAÇ MANTIĞI
-    # =====================
-
-    # toplam maç sayısı
-    flat_matches = []
-    for league_matches in all_matches.values():
-        for m in league_matches:
-            flat_matches.append(
-                f"{m['homeTeam']['name']} - {m['awayTeam']['name']}"
-            )
-
-    total_matches = len(flat_matches)
-
-    # free kullanıcıya garanti gösterilecek maç sayısı
+    coupons = cached.get("coupons", {"daily": [], "high_odds": [], "super_odds": []})
+    
+    # Free pick mantığı
+    total_matches = sum(len(matches) for matches in all_matches.values())
     free_count = 3 if total_matches >= 10 else 2
-
-    # picks varsa en iyiler
-    sorted_picks = sorted(all_picks, key=lambda x: x["value"], reverse=True)
+    
+    sorted_picks = sorted(all_picks, key=lambda x: x['value'], reverse=True)
     free_pick_matches = set(p["match"] for p in sorted_picks[:free_count])
-
-    # =====================
-    # MAÇLARA FLAG EKLE
-    # =====================
+    
+    # Her maça is_free flag ekle
     for league_matches in all_matches.values():
         for match in league_matches:
             match_name = f"{match['homeTeam']['name']} - {match['awayTeam']['name']}"
-
-            match["is_free"] = (
+            match['is_free'] = (
                 is_premium
                 or match_name in free_pick_matches
-             )
-
+            )
+    
     return templates.TemplateResponse(
         "dashboard.html",
         {
             "request": request,
             "matches": all_matches,
             "picks": all_picks,
-            "coupons": coupons,  # ✅ Kuponları template'e gönder
+            "coupons": coupons,
             "is_premium": is_premium,
             "user": user,
-            "free_count": free_count
+            "free_count": free_count,
+            "free_pick_matches": free_pick_matches
         }
     )
-
-@app.get("/account", response_class=HTMLResponse)
-def account_page(request: Request, session_id: str = Cookie(None)):
-    user = get_current_user(session_id)
-    
-    if not user:
-        return RedirectResponse(url="/login", status_code=303)
-    
-    # Premium kalan gün hesapla
-    days_left = 0
-    if user["is_premium"] and user["premium_until"]:
-        try:
-            if user.get("lifetime_premium"):
-                days_left = 99999  # Lifetime için çok büyük sayı
-            else:
-                premium_date = datetime.fromisoformat(user["premium_until"])
-                days_left = max(0, (premium_date - datetime.now()).days)
-        except:
-            days_left = 0
-    
-    return templates.TemplateResponse(
-        "account.html",
-        {
-            "request": request,
-            "user": user,
-            "days_left": days_left
-        }
-    )
-
-
-@app.get("/register", response_class=HTMLResponse)
-def register_page(request: Request):
-    return templates.TemplateResponse("register.html", {"request": request})
 
 @app.get("/coupons", response_class=HTMLResponse)
 def coupons_page(request: Request, session_id: str = Cookie(None)):
-    """
-    ✅ YENİ: Hazır Kuponlar Sayfası
-    """
-    user = user_manager.verify_session(session_id) if session_id else None
+    """✅ Hazır Kuponlar Sayfası"""
+    user = get_current_user(session_id)
     is_premium = user["is_premium"] if user else False
     
     cached = cache_manager.get_matches_cache()
     
     if not cached:
-        return HTMLResponse("<h1>Veriler yükleniyor, lütfen birkaç saniye sonra tekrar deneyin</h1>")
+        fetch_all_matches()
+        cached = cache_manager.get_matches_cache()
     
     coupons = cached.get("coupons", {"daily": [], "high_odds": [], "super_odds": []})
     
@@ -646,49 +595,42 @@ def coupons_page(request: Request, session_id: str = Cookie(None)):
         }
     )
 
-@app.post("/register", response_class=HTMLResponse)
-async def register_submit(
-    request: Request,
-    email: str = Form(...),
-    password: str = Form(...)
-):
-    result = user_manager.create_user(email, password)
+@app.get("/account", response_class=HTMLResponse)
+def account_page(request: Request, session_id: str = Cookie(None)):
+    user = get_current_user(session_id)
     
-    if not result["success"]:
-        return templates.TemplateResponse(
-            "register.html",
-            {"request": request, "error": result["error"]}
-        )
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
     
-    login_result = user_manager.login_user(email, password)
-    
-    if login_result["success"]:
-        response = RedirectResponse(url="/dashboard", status_code=303)
-        # ✅ Kayıt olunca otomatik 30 gün hatırla
-        response.set_cookie(
-            key="session_id", 
-            value=login_result["session_id"], 
-            httponly=True,
-            max_age=30 * 24 * 60 * 60,  # 30 gün
-            samesite="lax"
-        )
-        return response
+    # Premium bitiş gününe kadar kalan gün sayısı
+    days_left = 0
+    if user["is_premium"] and user["premium_until"]:
+        try:
+            premium_date = datetime.fromisoformat(user["premium_until"])
+            today = datetime.now()
+            days_left = (premium_date - today).days
+        except:
+            days_left = 0
     
     return templates.TemplateResponse(
-        "register.html",
-        {"request": request, "error": "Kayıt başarılı ama giriş yapılamadı"}
+        "account.html",
+        {
+            "request": request,
+            "user": user,
+            "days_left": max(0, days_left)
+        }
     )
 
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
     return templates.TemplateResponse("login_page.html", {"request": request})
 
-@app.post("/login", response_class=HTMLResponse)
-async def login_submit(
+@app.post("/login")
+async def login(
     request: Request,
     email: str = Form(...),
     password: str = Form(...),
-    remember_me: str = Form(None)  # ✅ Beni hatırla checkbox (HTML'den "true" gelir)
+    remember_me: str = Form(None)
 ):
     result = user_manager.login_user(email, password)
     
@@ -698,19 +640,67 @@ async def login_submit(
             {"request": request, "error": result["error"]}
         )
     
+    # Session süresi: Beni hatırla 30 gün, değilse 7 gün
+    max_age = 30 * 24 * 60 * 60 if remember_me else 7 * 24 * 60 * 60
+    
     response = RedirectResponse(url="/dashboard", status_code=303)
-    
-    # ✅ Beni hatırla işaretliyse 30 gün, değilse oturum süresi (tarayıcı kapanınca siler)
-    max_age = 30 * 24 * 60 * 60 if remember_me == "true" else None  # 30 gün
-    
     response.set_cookie(
-        key="session_id", 
-        value=result["session_id"], 
-        httponly=True,
+        key="session_id",
+        value=result["session_id"],
         max_age=max_age,
-        samesite="lax"  # Güvenlik için
+        httponly=True,
+        samesite="lax"
     )
     return response
+
+@app.get("/register", response_class=HTMLResponse)
+def register_page(request: Request):
+    return templates.TemplateResponse("register.html", {"request": request})
+
+@app.post("/register")
+async def register(
+    request: Request,
+    email: str = Form(...),
+    password: str = Form(...),
+    confirm_password: str = Form(...),
+    redeem_code: str = Form(None)
+):
+    if password != confirm_password:
+        return templates.TemplateResponse(
+            "register.html",
+            {"request": request, "error": "Şifreler eşleşmiyor"}
+        )
+    
+    # Redeem kodu varsa upper case yap
+    redeem_code_clean = redeem_code.strip().upper() if redeem_code else None
+    
+    result = user_manager.register_user(email, password, redeem_code_clean)
+    
+    if not result["success"]:
+        return templates.TemplateResponse(
+            "register.html",
+            {"request": request, "error": result["error"]}
+        )
+    
+    # Eğer redeem kod kullanıldıysa direkt dashboard'a yönlendir
+    if result.get("has_redeem"):
+        # Otomatik login yap
+        login_result = user_manager.login_user(email, password)
+        response = RedirectResponse(url="/dashboard", status_code=303)
+        response.set_cookie(
+            key="session_id",
+            value=login_result["session_id"],
+            max_age=30 * 24 * 60 * 60,
+            httponly=True,
+            samesite="lax"
+        )
+        return response
+    
+    # Normal kayıt - ödeme sayfasına yönlendir
+    return templates.TemplateResponse(
+        "register.html",
+        {"request": request, "success": True}
+    )
 
 @app.get("/logout")
 def logout(session_id: str = Cookie(None)):
@@ -720,6 +710,136 @@ def logout(session_id: str = Cookie(None)):
     response = RedirectResponse(url="/dashboard", status_code=303)
     response.delete_cookie("session_id")
     return response
+
+# =====================
+# ✅ ŞİFRE SIFIRLAMA ROUTES
+# =====================
+
+@app.get("/forgot-password", response_class=HTMLResponse)
+def forgot_password_page(request: Request):
+    """Şifremi unuttum sayfası"""
+    return templates.TemplateResponse("forgot_password.html", {"request": request})
+
+@app.post("/forgot-password")
+async def forgot_password(
+    request: Request,
+    email: str = Form(...)
+):
+    """Şifre sıfırlama linki gönder"""
+    # Kullanıcıyı bul
+    with get_connection() as conn:
+        result = conn.execute(
+            text("SELECT id FROM users WHERE email = :email"),
+            {"email": email}
+        ).fetchone()
+    
+    if not result:
+        return templates.TemplateResponse(
+            "forgot_password.html",
+            {"request": request, "error": "Bu e-posta adresi kayıtlı değil"}
+        )
+    
+    user_id = result[0]
+    
+    # Token oluştur
+    ip_address = request.client.host
+    token = reset_manager.create_token(user_id, ip_address)
+    
+    # Reset linki oluştur
+    reset_link = f"{request.base_url}reset-password?token={token}"
+    
+    # Email gönder
+    try:
+        reset_manager.send_reset_email(email, reset_link)
+        print(f"✅ Reset email gönderildi: {email}")
+    except Exception as e:
+        print(f"⚠️ Email gönderilemedi: {e}")
+        print(f"🔑 Reset link: {reset_link}")
+    
+    return templates.TemplateResponse(
+        "forgot_password.html",
+        {
+            "request": request,
+            "success": f"Şifre sıfırlama linki {email} adresinize gönderildi! Email kutunuzu kontrol edin."
+        }
+    )
+
+@app.get("/reset-password", response_class=HTMLResponse)
+def reset_password_page(request: Request, token: str = None):
+    """Şifre sıfırlama sayfası"""
+    if not token:
+        return RedirectResponse(url="/login", status_code=303)
+    
+    # Token'ı doğrula
+    verify_result = reset_manager.verify_token(token)
+    
+    if not verify_result["valid"]:
+        return templates.TemplateResponse(
+            "reset_password.html",
+            {
+                "request": request,
+                "error": verify_result["error"],
+                "token": token
+            }
+        )
+    
+    return templates.TemplateResponse(
+        "reset_password.html",
+        {"request": request, "token": token}
+    )
+
+@app.post("/reset-password")
+async def reset_password(
+    request: Request,
+    token: str = Form(...),
+    password: str = Form(...),
+    confirm_password: str = Form(...)
+):
+    """Şifreyi sıfırla"""
+    if password != confirm_password:
+        return templates.TemplateResponse(
+            "reset_password.html",
+            {
+                "request": request,
+                "error": "Şifreler eşleşmiyor",
+                "token": token
+            }
+        )
+    
+    if len(password) < 6:
+        return templates.TemplateResponse(
+            "reset_password.html",
+            {
+                "request": request,
+                "error": "Şifre en az 6 karakter olmalı",
+                "token": token
+            }
+        )
+    
+    # Şifreyi sıfırla
+    result = reset_manager.reset_password(token, password)
+    
+    if result["success"]:
+        return templates.TemplateResponse(
+            "reset_password.html",
+            {
+                "request": request,
+                "success": "Şifreniz başarıyla değiştirildi! Giriş sayfasına yönlendiriliyorsunuz..."
+            }
+        )
+    else:
+        return templates.TemplateResponse(
+            "reset_password.html",
+            {
+                "request": request,
+                "error": result["error"],
+                "token": token
+            }
+        )
+
+# =====================
+# PAYMENT ROUTES
+# =====================
 
 @app.get("/payment", response_class=HTMLResponse)
 def payment_page(request: Request, session_id: str = Cookie(None)):
@@ -788,6 +908,10 @@ def payment_pending_page(request: Request, session_id: str = Cookie(None)):
         }
     )
 
+# =====================
+# ADMIN ROUTES
+# =====================
+
 @app.get("/admin5600", response_class=HTMLResponse)
 def admin_panel(request: Request, admin_password: str = None):
     if admin_password != ADMIN_PASSWORD:
@@ -855,22 +979,16 @@ def refresh_data(request: Request, session_id: str = Cookie(None)):
         if not cached:
             return HTMLResponse("<h1>Veriler yüklenemedi, lütfen birkaç saniye bekleyip tekrar deneyin</h1>")
         
-        # Free picks mantığı
         all_matches = cached.get("matches", {})
         all_picks = cached.get("picks", [])
-        coupons = cached.get("coupons", {"daily": [], "high_odds": [], "super_odds": []})  # ✅ Kuponları al
+        coupons = cached.get("coupons", {"daily": [], "high_odds": [], "super_odds": []})
         
-        # Toplam maç sayısı
         total_matches = sum(len(matches) for matches in all_matches.values())
-        
-        # Free pick sayısını belirle
         free_count = 3 if total_matches >= 10 else 2
         
-        # En yüksek değerli picksleri sırala
         sorted_picks = sorted(all_picks, key=lambda x: x['value'], reverse=True)
         free_pick_matches = set(p["match"] for p in sorted_picks[:free_count])
         
-        # Her maça is_free flag ekle
         for league_matches in all_matches.values():
             for match in league_matches:
                 match_name = f"{match['homeTeam']['name']} - {match['awayTeam']['name']}"
@@ -885,7 +1003,7 @@ def refresh_data(request: Request, session_id: str = Cookie(None)):
                 "request": request,
                 "matches": all_matches,
                 "picks": all_picks,
-                "coupons": coupons,  # ✅ Kuponları template'e gönder
+                "coupons": coupons,
                 "is_premium": is_premium,
                 "user": user,
                 "free_count": free_count,
@@ -941,6 +1059,10 @@ async def startup_event():
     print("      → Hücum vs Hücum → Over +15%")
     print("      → Savunma vs Savunma → Over -20%")
     print("      → KG ve Over optimize edildi")
+    print()
+    print("   5️⃣ Şifre Sıfırlama Sistemi")
+    print("      → Email ile token gönderimi")
+    print("      → 30 dakika geçerlilik süresi")
     print("=" * 60)
     
     try:
