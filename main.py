@@ -143,7 +143,7 @@ def safe_request(url, params=None, retries=2):
 # 🔥 YENİ v3.0 - %83.5 BAŞARI HEDEFLİ MATEMATİK
 # =====================
 
-def get_team_stats(team_id):
+  def get_team_stats(team_id):
     """
     ✅ 3. ÖZELLİK: EV/DEPLASMAN FORMU AYRIMI
     Son 10 maçı ev ve deplasman olarak ayırır
@@ -244,199 +244,222 @@ def check_consistency(goals_list):
     
     Örnek:
     [3, 2, 3, 2, 3] → std_dev = 0.5 → Tutarlı = 1.0
-    [5, 0, 6, 0, 4] → std_dev = 2.8 → Tutarsız = 0.3
+    [5, 0, 6, 0, 4] → std_dev = 2.8 → Tutarsız = 0.6
     """
     if len(goals_list) < 3:
-        return 0.8  # Varsayılan
+        return 1.0  # Yeterli veri yok, nötr
     
     try:
-        avg = sum(goals_list) / len(goals_list)
-        variance = sum((x - avg) ** 2 for x in goals_list) / len(goals_list)
-        std_dev = variance ** 0.5
+        std_dev = statistics.stdev(goals_list)
+        mean = statistics.mean(goals_list)
         
-        # Std dev ne kadar düşükse o kadar tutarlı
-        if std_dev < 1.0:
-            return 1.0  # Çok tutarlı
-        elif std_dev < 1.5:
-            return 0.8  # Tutarlı
-        elif std_dev < 2.0:
-            return 0.6  # Orta
+        # Varyasyon katsayısı (CV)
+        if mean > 0:
+            cv = std_dev / mean
         else:
-            return 0.4  # Tutarsız
+            cv = 0
+        
+        # CV düşükse tutarlı, yüksekse tutarsız
+        if cv < 0.3:
+            return 1.15  # Çok tutarlı → +15% güven
+        elif cv < 0.5:
+            return 1.05  # Tutarlı → +5% güven
+        elif cv < 0.8:
+            return 1.0   # Normal
+        elif cv < 1.2:
+            return 0.92  # Tutarsız → -8% güven
+        else:
+            return 0.80  # Çok tutarsız → -20% güven
     except:
-        return 0.8
+        return 1.0
 
-def analyze_match_style(home_stats, away_stats):
+def ms_probs(home_id, away_id, hs, as_, is_home_match=True):
     """
-    ✅ 4. ÖZELLİK: OYUN TARZI UYUMU
-    
-    Senaryolar:
-    1. Hücum vs Hücum → Over +15%, KG +10%
-    2. Savunma vs Savunma → Over -20%, KG -10%
-    3. Hücum vs Savunma → Normal
+    ✅ 1. ÖZELLİK: Rakip kalite faktörü
+    ✅ 3. ÖZELLİK: Ev/Deplasman formu kullanımı
+    ✅ 2. ÖZELLİK: Form tutarlılığı entegrasyonu
     """
-    # Takım tarzını belirle
-    home_attack = home_stats["home_avg_scored"]
-    away_attack = away_stats["away_avg_scored"]
     
-    home_defense = home_stats["home_avg_conceded"]
-    away_defense = away_stats["away_avg_conceded"]
-    
-    # Hücumcu mu savunmacı mı?
-    home_offensive = home_attack > 1.5 and home_defense > 1.0
-    away_offensive = away_attack > 1.5 and away_defense > 1.0
-    
-    home_defensive = home_attack < 1.2 and home_defense < 1.0
-    away_defensive = away_attack < 1.2 and away_defense < 1.0
-    
-    # Senaryo 1: Hücum vs Hücum
-    if home_offensive and away_offensive:
-        return {"over_boost": 15, "kg_boost": 10, "style": "Hücum vs Hücum"}
-    
-    # Senaryo 2: Savunma vs Savunma
-    elif home_defensive and away_defensive:
-        return {"over_boost": -20, "kg_boost": -10, "style": "Savunma vs Savunma"}
-    
-    # Senaryo 3: Karışık
+    # ✅ Ev/Deplasman formu kullan
+    if is_home_match:
+        home_scored = hs["home_avg_scored"]
+        away_scored = as_["away_avg_scored"]
     else:
-        return {"over_boost": 0, "kg_boost": 0, "style": "Karışık"}
-
-def calculate_predictions(match):
-    home_id = match["homeTeam"]["id"]
-    away_id = match["awayTeam"]["id"]
-    competition_code = match["competition"]["code"]
-
-    # ✅ 1. TAKIM GÜÇLERINI HESAPLA
-    home_strength = get_team_strength(home_id)
+        home_scored = hs["avg_scored"]
+        away_scored = as_["avg_scored"]
+    
+    # Temel fark
+    diff = home_scored - away_scored
+    
+    # ✅ 1. ÖZELLİK: Rakip kalite kontrolü
     away_strength = get_team_strength(away_id)
+    home_strength = get_team_strength(home_id)
     
-    # Takım güçleri arası fark
-    strength_diff = abs(home_strength - away_strength)
+    # Deplasman takımı çok güçlüyse diff'i azalt
+    if away_strength > 75:  # Top 6 seviye (City, Liverpool, Arsenal vb)
+        diff *= 0.3  # %70 azalt
+    elif away_strength > 65:  # Top 10 seviye
+        diff *= 0.5  # %50 azalt
+    elif away_strength > 55:  # Orta üst
+        diff *= 0.7  # %30 azalt
     
-    # ✅ RAKIP KALİTE FAKTÖRÜ
-    # Güçlü rakiplere karşı diff'i azalt
-    opponent_quality_factor = 1.0
-    if strength_diff < 20:  # Dengeli maç (Liverpool-City gibi)
-        opponent_quality_factor = 0.6  # %40 azaltma
-    elif strength_diff < 35:  # Orta fark
-        opponent_quality_factor = 0.8  # %20 azaltma
-    else:  # Büyük fark
-        opponent_quality_factor = 1.0  # Normal
+    # Ev sahibi çok zayıfsa
+    if home_strength < 40:
+        diff *= 0.8
     
-    # İstatistikleri al
-    home_stats = get_team_stats(home_id)
-    away_stats = get_team_stats(away_id)
+    # ✅ 2. ÖZELLİK: Form tutarlılığı uygula
+    home_consistency = check_consistency(hs["goals_list"])
+    away_consistency = check_consistency(as_["goals_list"])
     
-    # ✅ 2. FORM TUTARLILIĞI
-    home_consistency = check_consistency(home_stats["goals_list"])
-    away_consistency = check_consistency(away_stats["goals_list"])
-    avg_consistency = (home_consistency + away_consistency) / 2
+    diff *= home_consistency
+    diff *= (2 - away_consistency)  # Rakip tutarsızsa avantaj
     
-    # ✅ 3. EV/DEPLASMAN AYRIMI
-    home_attack = home_stats["home_avg_scored"]
-    away_attack = away_stats["away_avg_scored"]
-    home_defense = home_stats["home_avg_conceded"]
-    away_defense = away_stats["away_avg_conceded"]
+    ms1 = max(18, 50 + diff * 11)
+    ms2 = max(18, 50 - diff * 11)
+    msx = max(12, 100 - (ms1 + ms2))
     
-    # ✅ 4. OYUN TARZI UYUMU
-    style_analysis = analyze_match_style(home_stats, away_stats)
-    
-    # Maç skorları tahmini (Poisson benzeri)
-    diff = (home_attack + away_defense) - (away_attack + home_defense)
-    
-    # ✅ RAKIP KALİTE FAKTÖRÜ UYGULA
-    diff *= opponent_quality_factor
-    
-    # Liga ağırlığı
-    league_mult = LEAGUE_WEIGHT.get(competition_code, 1.0)
-    diff *= league_mult
-    
-    # MS1, MS0, MS2
-    if diff > 0.8:
-        ms1_base = 65 + min(diff * 8, 25)
-        ms0_base = 20
-        ms2_base = 15
-    elif diff > 0.3:
-        ms1_base = 55 + min(diff * 10, 20)
-        ms0_base = 25
-        ms2_base = 20
-    elif diff < -0.8:
-        ms2_base = 65 + min(abs(diff) * 8, 25)
-        ms0_base = 20
-        ms1_base = 15
-    elif diff < -0.3:
-        ms2_base = 55 + min(abs(diff) * 10, 20)
-        ms0_base = 25
-        ms1_base = 20
-    else:  # Dengeli maç
-        ms0_base = 40
-        ms1_base = 30
-        ms2_base = 30
-    
-    # ✅ FORM TUTARLILIĞI UYGULA
-    # Tutarlı formda ise tahmin güvenini artır
-    ms1 = ms1_base * (0.85 + avg_consistency * 0.15)
-    ms0 = ms0_base
-    ms2 = ms2_base * (0.85 + avg_consistency * 0.15)
-    
-    # Over 2.5
-    avg_goals = home_attack + away_attack
-    over_base = 30 + min(avg_goals * 15, 50)
-    
-    # ✅ OYUN TARZI BOOST UYGULA
-    over_base += style_analysis["over_boost"]
-    
-    # Over normalize
-    over = max(20, min(90, over_base))
-    
-    # KG (Karşılıklı Gol)
-    kg_base = (home_stats["kg"] + away_stats["kg"]) / 2
-    
-    # ✅ OYUN TARZI BOOST UYGULA
-    kg_base += style_analysis["kg_boost"]
-    
-    kg = max(15, min(85, kg_base))
-    
-    # İlk Yarı 1.5+
-    fh_base = (home_stats["fh15"] + away_stats["fh15"]) / 2
-    fh15 = max(15, min(75, fh_base))
-    
-    # Normalize (toplam 100%)
-    total = ms1 + ms0 + ms2
-    if total > 0:
-        ms1 = (ms1 / total) * 100
-        ms0 = (ms0 / total) * 100
-        ms2 = (ms2 / total) * 100
-    
-    # En yüksek değer ve market
-    market_values = {
-        "MS1": ms1,
-        "MS0": ms0,
-        "MS2": ms2,
-        "O25": over,
-        "KG": kg,
-        "FH15": fh15
-    }
-    
-    best_market = max(market_values, key=market_values.get)
-    best_value = market_values[best_market]
+    t = ms1 + msx + ms2
     
     return {
-        "MS1": round(ms1),
-        "MS0": round(ms0),
-        "MS2": round(ms2),
-        "O25": round(over),
-        "KG": round(kg),
-        "FH15": round(fh15),
-        "best": best_market,
-        "best_value": round(best_value),
-        
-        # Debug bilgileri
-        "strength_diff": round(strength_diff, 1),
-        "opponent_quality_factor": round(opponent_quality_factor, 2),
-        "consistency": round(avg_consistency, 2),
-        "style": style_analysis["style"]
+        "MS1": round(ms1 / t * 100, 2),
+        "MS0": round(msx / t * 100, 2),
+        "MS2": round(ms2 / t * 100, 2)
     }
+
+def over_probs(hs, as_):
+    """
+    ✅ 4. ÖZELLİK: OYUN TARZI UYUMU
+    İki hücum takımı → Over yükselir
+    İki savunma takımı → Under yükselir
+    """
+    base = (hs["over25"] + as_["over25"]) / 2
+    
+    # ✅ Oyun tarzı uyumu
+    home_attack = hs["avg_scored"]
+    away_attack = as_["avg_scored"]
+    
+    # İki takım da hücum odaklıysa
+    if home_attack > 2.5 and away_attack > 2.5:
+        base *= 1.15  # +15% Over bonusu
+    
+    # İki takım da savunma odaklıysa
+    elif home_attack < 1.2 and away_attack < 1.2:
+        base *= 0.80  # -20% Over (Under'a kaydir)
+    
+    # Bir takım çok gol atıyor, diğeri çok yiyor
+    home_defense = hs["avg_conceded"]
+    away_defense = as_["avg_conceded"]
+    
+    if (home_attack > 2.5 and away_defense > 1.8) or (away_attack > 2.5 and home_defense > 1.8):
+        base *= 1.10  # +10% Over bonusu
+    
+    return {"O25": min(round(base, 2), 95)}
+
+def kg_probs(hs, as_):
+    """
+    ✅ 4. ÖZELLİK: OYUN TARZI UYUMU
+    İki hücum takımı → KG yükselir
+    Bir takım çok savunmacıysa → KG düşer
+    """
+    base = (hs["kg"] + as_["kg"]) / 2
+    
+    # ✅ Oyun tarzı uyumu
+    home_attack = hs["avg_scored"]
+    away_attack = as_["avg_scored"]
+    
+    # İki takım da hücum odaklıysa
+    if home_attack > 2.0 and away_attack > 2.0:
+        base *= 1.12  # +12% KG bonusu
+    
+    # Bir takım çok savunmacıysa
+    if home_attack < 1.0 or away_attack < 1.0:
+        base *= 0.85  # -15% KG
+    
+    return {"KG": min(round(base, 2), 90)}
+
+def fh_probs(hs, as_):
+    """
+    ✅ Basit ortalama - oyun tarzı etkisi az
+    """
+    o = (hs["fh15"] + as_["fh15"]) / 2
+    return {"FH15": round(o, 2)}
+
+def generate_coupons(picks):
+    """
+    ✅ GÜNCELLEME: Daha gerçekçi eşikler
+    
+    1️⃣ GÜNÜN KOMBİNESİ: %75+ (En güvenilir 3 tahmin)
+    2️⃣ YÜKSEK ORAN: %68-75 (4 tahmin)
+    3️⃣ SÜPER ORAN: %62-68 (5 tahmin)
+    """
+    if not picks:
+        return {
+            "daily": [],
+            "high_odds": [],
+            "super_odds": []
+        }
+    
+    # En yüksek güvenilirlikten sırala
+    sorted_picks = sorted(picks, key=lambda x: x['value'], reverse=True)
+    
+    # 1️⃣ GÜNÜN KOMBİNESİ: %75 ve üstü (en fazla 3 tane)
+    daily_coupon = [p for p in sorted_picks if p['value'] >= 75][:3]
+    
+    # 2️⃣ YÜKSEK ORAN: %68-75 arası (en fazla 4 tane)
+    high_odds_coupon = [p for p in sorted_picks if 68 <= p['value'] < 75][:4]
+    
+    # 3️⃣ SÜPER ORAN: %62-68 arası (en fazla 5 tane)
+    super_odds_coupon = [p for p in sorted_picks if 62 <= p['value'] < 68][:5]
+    
+    return {
+        "daily": daily_coupon,
+        "high_odds": high_odds_coupon,
+        "super_odds": super_odds_coupon
+    }
+
+def build_markets(match, picks, league_code):
+    """
+    ✅ Her maçın tüm marketlerini hesapla
+    ✅ Liga ağırlığı uygula
+    ✅ %65+ olan EN YÜKSEK marketi picks'e ekle
+    """
+    home_id = match["homeTeam"]["id"]
+    away_id = match["awayTeam"]["id"]
+    
+    hs = get_team_stats(home_id)
+    as_ = get_team_stats(away_id)
+
+    # ✅ Yeni formüllerle hesapla
+    ms = ms_probs(home_id, away_id, hs, as_, is_home_match=True)
+    over = over_probs(hs, as_)
+    kg = kg_probs(hs, as_)
+    fh = fh_probs(hs, as_)
+
+    # Liga ağırlığı uygula
+    weight = LEAGUE_WEIGHT.get(league_code, 1.0)
+    
+    # Tüm piyasaları ağırlıklandır
+    all_markets = {}
+    for market, value in {**ms, **over, **kg, **fh}.items():
+        weighted_value = min(value * weight, 95)
+        all_markets[market] = round(weighted_value, 2)
+
+    # ✅ En yüksek piyasayı bul
+    best_key, best_value = max(all_markets.items(), key=lambda x: x[1])
+    
+    # ✅ Sadece en yüksek piyasa %65+ ise picks'e ekle
+    if best_value >= 65:
+        picks.append({
+            "match": f"{match['homeTeam']['name']} - {match['awayTeam']['name']}",
+            "market": best_key,
+            "value": best_value
+        })
+
+    all_markets["best"] = best_key
+    all_markets["best_value"] = best_value
+
+    return all_markets
+
 
 def fetch_all_matches():
     """
