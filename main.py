@@ -588,6 +588,35 @@ def dashboard(request: Request, session_id: str = Cookie(None)):
         }
     )
 
+@app.get("/account", response_class=HTMLResponse)
+def account_page(request: Request, session_id: str = Cookie(None)):
+    user = get_current_user(session_id)
+    
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
+    
+    # Premium kalan gün hesapla
+    days_left = 0
+    if user["is_premium"] and user["premium_until"]:
+        try:
+            if user.get("lifetime_premium"):
+                days_left = 99999  # Lifetime için çok büyük sayı
+            else:
+                premium_date = datetime.fromisoformat(user["premium_until"])
+                days_left = max(0, (premium_date - datetime.now()).days)
+        except:
+            days_left = 0
+    
+    return templates.TemplateResponse(
+        "account.html",
+        {
+            "request": request,
+            "user": user,
+            "days_left": days_left
+        }
+    )
+
+
 @app.get("/register", response_class=HTMLResponse)
 def register_page(request: Request):
     return templates.TemplateResponse("register.html", {"request": request})
