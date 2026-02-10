@@ -44,62 +44,55 @@ class PasswordResetManager:
         return raw_token  # Hash değil, gerçek token'ı döndür
 
     def verify_token(self, token: str) -> dict:
-        """Token'ı doğrula"""
-        try:
-            token_hash = hashlib.sha256(token.encode()).hexdigest()
-            
-            print(f"🔍 Token doğrulanıyor - Hash: {token_hash[:20]}...")
-            
-            with get_connection() as conn:
-                result = conn.execute(
-                    text("""
-                        SELECT user_id, expires_at, used 
-                        FROM password_reset_tokens 
-                        WHERE token_hash = :token_hash
-                    """),
-                    {"token_hash": token_hash}
-                ).fetchone()
-                
-                if not result:
-                    print(f"❌ Token bulunamadı")
-                    return {"valid": False, "error": "Geçersiz veya süresi dolmuş token"}
-                
-                user_id, expires_at, used = result
-                
-                print(f"✅ Token bulundu - User ID: {user_id}, Used: {used}, Expires: {expires_at}")
-                
-                # Token kullanılmış mı?
-                if used:
-                    print(f"❌ Token zaten kullanılmış")
-                    return {"valid": False, "error": "Bu token zaten kullanılmış"}
-                
-                # Süre kontrolü - UTC ile karşılaştır
-                now_utc = datetime.utcnow()
-                
-                # expires_at datetime objesi ise direkt karşılaştır
-                if isinstance(expires_at, datetime):
-                    if now_utc > expires_at:
-                        print(f"❌ Token süresi dolmuş - Now: {now_utc}, Expires: {expires_at}")
-                        return {"valid": False, "error": "Token süresi dolmuş (30 dakika)"}
-                # String ise parse et
-                else:
-                    expires_at_dt = datetime.fromisoformat(str(expires_at).replace('Z', '+00:00'))
-                    # Timezone varsa kaldır
-                    if expires_at_dt.tzinfo is not None:
-                        expires_at_dt = expires_at_dt.replace(tzinfo=None)
-                    
-                    if now_utc > expires_at_dt:
-                        print(f"❌ Token süresi dolmuş - Now: {now_utc}, Expires: {expires_at_dt}")
-                        return {"valid": False, "error": "Token süresi dolmuş (30 dakika)"}
-                
-                print(f"✅ Token geçerli!")
-                return {"valid": True, "user_id": user_id}
-                
-        except Exception as e:
-            print(f"❌ Token doğrulama hatası: {e}")
-            import traceback
-            traceback.print_exc()
-            return {"valid": False, "error": "Token doğrulama hatası"}
+    """Token'ı doğrula"""
+    try:
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        print(f"🔍 Token doğrulanıyor - Hash: {token_hash[:20]}...")
+
+        with get_connection() as conn:
+            result = conn.execute(
+                text("""
+                    SELECT user_id, expires_at, used
+                    FROM password_reset_tokens
+                    WHERE token_hash = :token_hash
+                """),
+                {"token_hash": token_hash}
+            ).fetchone()
+
+        if not result:
+            print("❌ Token bulunamadı")
+            return {"valid": False, "error": "Geçersiz veya süresi dolmuş token"}
+
+        user_id, expires_at, used = result
+        print(f"✅ Token bulundu - User ID: {user_id}, Used: {used}, Expires: {expires_at}")
+
+        # Token daha önce kullanılmış mı
+        if used:
+            print("❌ Token zaten kullanılmış")
+            return {"valid": False, "error": "Bu token zaten kullanılmış"}
+
+        # 🔥 EN KRİTİK FIX: timezone normalize
+        now_utc = datetime.now(timezone.utc)
+
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+        if now_utc > expires_at:
+            print(f"❌ Token süresi dolmuş - Now: {now_utc}, Expires: {expires_at}")
+            return {"valid": False, "error": "Token süresi dolmuş (30 dakika)"}
+
+        print("✅ Token geçerli")
+        return {
+            "valid": True,
+            "user_id": user_id
+        }
+
+    except Exception as e:
+        print(f"❌ Token doğrulama hatası: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"valid": False, "error": "Token doğrulama hatası"}
+
 
     def reset_password(self, token: str, new_password: str) -> dict:
         """Şifreyi sıfırla"""
