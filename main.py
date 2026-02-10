@@ -762,37 +762,37 @@ async def forgot_password(
                 text("SELECT id FROM users WHERE email = :email"),
                 {"email": email}
             ).fetchone()
-    
-    if not result:
+
+        if not result:
+            return templates.TemplateResponse(
+                "forgot_password.html",
+                {"request": request, "error": "Bu e-posta adresi kayıtlı değil"}
+            )
+
+        user_id = result[0]
+
+        # Token oluştur
+        ip_address = request.client.host
+        token = reset_manager.create_token(user_id, ip_address)
+
+        # Reset linki oluştur
+        reset_link = f"{request.base_url}reset-password?token={token}"
+
+        # Email gönder
+        try:
+            reset_manager.send_reset_email(email, reset_link)
+            print(f"✅ Reset email gönderildi: {email}")
+        except Exception as e:
+            print(f"⚠️ Email gönderilemedi: {e}")
+            print(f"🔑 Manuel Reset link: {reset_link}")
+
         return templates.TemplateResponse(
             "forgot_password.html",
-            {"request": request, "error": "Bu e-posta adresi kayıtlı değil"}
+            {
+                "request": request,
+                "success": f"Şifre sıfırlama linki {email} adresinize gönderildi! Email kutunuzu kontrol edin."
+            }
         )
-    
-    user_id = result[0]
-    
-    # Token oluştur
-    ip_address = request.client.host
-    token = reset_manager.create_token(user_id, ip_address)
-    
-    # Reset linki oluştur
-    reset_link = f"{request.base_url}reset-password?token={token}"
-    
-    # Email gönder
-    try:
-        reset_manager.send_reset_email(email, reset_link)
-        print(f"✅ Reset email gönderildi: {email}")
-    except Exception as e:
-        print(f"⚠️ Email gönderilemedi: {e}")
-        print(f"🔑 Manuel Reset link: {reset_link}")
-    
-    return templates.TemplateResponse(
-        "forgot_password.html",
-        {
-            "request": request,
-            "success": f"Şifre sıfırlama linki {email} adresinize gönderildi! Email kutunuzu kontrol edin."
-        }
-    )
 
     except Exception as e:
         print(f"❌ Forgot password hatası: {e}")
