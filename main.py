@@ -754,67 +754,93 @@ async def forgot_password(
     email: str = Form(...)
 ):
     """Şifre sıfırlama linki gönder"""
-    # Kullanıcıyı bul
-    with get_connection() as conn:
-        result = conn.execute(
-            text("SELECT id FROM users WHERE email = :email"),
-            {"email": email}
-        ).fetchone()
-    
-    if not result:
+    try:
+        # Kullanıcıyı bul
+        with get_connection() as conn:
+            result = conn.execute(
+                text("SELECT id FROM users WHERE email = :email"),
+                {"email": email}
+            ).fetchone()
+        
+        if not result:
+            return templates.TemplateResponse(
+                "forgot_password.html",
+                {"request": request, "error": "Bu e-posta adresi kayıtlı değil"}
+            )
+        
+        user_id = result[0]
+        
+        # Token oluştur
+        ip_address = request.client.host
+        token = reset_manager.create_token(user_id, ip_address)
+        
+        # Reset linki oluştur
+        reset_link = f"{request.base_url}reset-password?token={token}"
+        
+        print(f"🔑 Reset link oluşturuldu: {reset_link}")
+        
+        # Email gönder
+        try:
+            reset_manager.send_reset_email(email, reset_link)
+            print(f"✅ Reset email gönderildi: {email}")
+        except Exception as e:
+            print(f"⚠️ Email gönderilemedi: {e}")
+            print(f"🔑 Manuel reset link: {reset_link}")
+        
         return templates.TemplateResponse(
             "forgot_password.html",
-            {"request": request, "error": "Bu e-posta adresi kayıtlı değil"}
+            {
+                "request": request,
+                "success": f"Şifre sıfırlama linki {email} adresinize gönderildi! Email kutunuzu kontrol edin."
+            }
         )
-    
-    user_id = result[0]
-    
-    # Token oluştur
-    ip_address = request.client.host
-    token = reset_manager.create_token(user_id, ip_address)
-    
-    # Reset linki oluştur
-    reset_link = f"{request.base_url}reset-password?token={token}"
-    
-    # Email gönder
-    try:
-        reset_manager.send_reset_email(email, reset_link)
-        print(f"✅ Reset email gönderildi: {email}")
     except Exception as e:
-        print(f"⚠️ Email gönderilemedi: {e}")
-        print(f"🔑 Reset link: {reset_link}")
-    
-    return templates.TemplateResponse(
-        "forgot_password.html",
-        {
-            "request": request,
-            "success": f"Şifre sıfırlama linki {email} adresinize gönderildi! Email kutunuzu kontrol edin."
-        }
-    )
+        print(f"❌ Forgot password hatası: {e}")
+        import traceback
+        traceback.print_exc()
+        return templates.TemplateResponse(
+            "forgot_password.html",
+            {"request": request, "error": "Bir hata oluştu, lütfen tekrar deneyin"}
+        )
 
 @app.get("/reset-password", response_class=HTMLResponse)
 def reset_password_page(request: Request, token: str = None):
     """Şifre sıfırlama sayfası"""
-    if not token:
-        return RedirectResponse(url="/login", status_code=303)
-    
-    # Token'ı doğrula
-    verify_result = reset_manager.verify_token(token)
-    
-    if not verify_result["valid"]:
+    try:
+        print(f"🔍 Reset password GET request - Token: {token[:20] if token else 'None'}...")
+        
+        if not token:
+            print(f"❌ Token parametresi yok")
+            return RedirectResponse(url="/login", status_code=303)
+        
+        # Token'ı doğrula
+        print(f"🔍 Token doğrulanıyor...")
+        verify_result = reset_manager.verify_token(token)
+        
+        print(f"✅ Verify result: {verify_result}")
+        
+        if not verify_result["valid"]:
+            print(f"❌ Token geçersiz: {verify_result.get('error')}")
+            return templates.TemplateResponse(
+                "reset_password.html",
+                {
+                    "request": request,
+                    "error": verify_result["error"],
+                    "token": token
+                }
+            )
+        
+        print(f"✅ Token geçerli, sayfa gösteriliyor")
         return templates.TemplateResponse(
             "reset_password.html",
-            {
-                "request": request,
-                "error": verify_result["error"],
-                "token": token
-            }
+            {"request": request, "token": token}
         )
-    
-    return templates.TemplateResponse(
-        "reset_password.html",
-        {"request": request, "token": token}
-    )
+        
+    except Exception as e:
+        print(f"❌ Reset password GET hatası: {e}")
+        import traceback
+        traceback.print_exc()
+        return HTMLResponse(f"<h1>Hata</h1><pre>{str(e)}\n\n{traceback.format_exc()}</pre>", status_code=500)
 
 @app.post("/reset-password")
 async def reset_password(
@@ -824,43 +850,59 @@ async def reset_password(
     confirm_password: str = Form(...)
 ):
     """Şifreyi sıfırla"""
-    if password != confirm_password:
+    try:
+        print(f"🔍 Reset password POST request")
+        
+        if password != confirm_password:
+            return templates.TemplateResponse(
+                "reset_password.html",
+                {
+                    "request": request,
+                    "error": "Şifreler eşleşmiyor",
+                    "token": token
+                }
+            )
+        
+        if len(password) < 6:
+            return templates.TemplateResponse(
+                "reset_password.html",
+                {
+                    "request": request,
+                    "error": "Şifre en az 6 karakter olmalı",
+                    "token": token
+                }
+            )
+        
+        # Şifreyi sıfırla
+        result = reset_manager.reset_password(token, password)
+        
+        if result["success"]:
+            return templates.TemplateResponse(
+                "reset_password.html",
+                {
+                    "request": request,
+                    "success": "Şifreniz başarıyla değiştirildi! Giriş sayfasına yönlendiriliyorsunuz..."
+                }
+            )
+        else:
+            return templates.TemplateResponse(
+                "reset_password.html",
+                {
+                    "request": request,
+                    "error": result["error"],
+                    "token": token
+                }
+            )
+            
+    except Exception as e:
+        print(f"❌ Reset password POST hatası: {e}")
+        import traceback
+        traceback.print_exc()
         return templates.TemplateResponse(
             "reset_password.html",
             {
                 "request": request,
-                "error": "Şifreler eşleşmiyor",
-                "token": token
-            }
-        )
-    
-    if len(password) < 6:
-        return templates.TemplateResponse(
-            "reset_password.html",
-            {
-                "request": request,
-                "error": "Şifre en az 6 karakter olmalı",
-                "token": token
-            }
-        )
-    
-    # Şifreyi sıfırla
-    result = reset_manager.reset_password(token, password)
-    
-    if result["success"]:
-        return templates.TemplateResponse(
-            "reset_password.html",
-            {
-                "request": request,
-                "success": "Şifreniz başarıyla değiştirildi! Giriş sayfasına yönlendiriliyorsunuz..."
-            }
-        )
-    else:
-        return templates.TemplateResponse(
-            "reset_password.html",
-            {
-                "request": request,
-                "error": result["error"],
+                "error": "Bir hata oluştu, lütfen tekrar deneyin",
                 "token": token
             }
         )

@@ -5,6 +5,7 @@ from db_manager import get_connection
 from sqlalchemy import text
 from sender import send_password_reset_email
 
+# Türkiye saati için timezone
 TR_TZ = timezone(timedelta(hours=3))
 
 
@@ -20,7 +21,8 @@ class PasswordResetManager:
         raw_token = secrets.token_urlsafe(32)
         token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
         
-        expires_at = datetime.now(TR_TZ) + timedelta(minutes=self.expire_minutes)
+        # UTC zaman kullan (Supabase UTC'de tutuyor)
+        expires_at = datetime.utcnow() + timedelta(minutes=self.expire_minutes)
         
         with get_connection() as conn:
             conn.execute(
@@ -38,68 +40,104 @@ class PasswordResetManager:
             )
             conn.commit()
         
-        print(f"🔑 Token oluşturuldu - User ID: {user_id}")
+        print(f"🔑 Token oluşturuldu - User ID: {user_id}, Expires: {expires_at}")
         return raw_token  # Hash değil, gerçek token'ı döndür
 
     def verify_token(self, token: str) -> dict:
         """Token'ı doğrula"""
-        token_hash = hashlib.sha256(token.encode()).hexdigest()
-        
-        with get_connection() as conn:
-            result = conn.execute(
-                text("""
-                    SELECT user_id, expires_at, used 
-                    FROM password_reset_tokens 
-                    WHERE token_hash = :token_hash
-                """),
-                {"token_hash": token_hash}
-            ).fetchone()
+        try:
+            token_hash = hashlib.sha256(token.encode()).hexdigest()
             
-            if not result:
-                return {"valid": False, "error": "Geçersiz token"}
+            print(f"🔍 Token doğrulanıyor - Hash: {token_hash[:20]}...")
             
-            user_id, expires_at, used = result
-            
-            # Token kullanılmış mı?
-            if used:
-                return {"valid": False, "error": "Bu token zaten kullanılmış"}
-            
-            # Token süresi dolmuş mu?
-            if datetime.now(TR_TZ) > expires_at.replace(tzinfo=TR_TZ):
-                return {"valid": False, "error": "Token süresi dolmuş (30 dakika)"}
-            
-            return {"valid": True, "user_id": user_id}
+            with get_connection() as conn:
+                result = conn.execute(
+                    text("""
+                        SELECT user_id, expires_at, used 
+                        FROM password_reset_tokens 
+                        WHERE token_hash = :token_hash
+                    """),
+                    {"token_hash": token_hash}
+                ).fetchone()
+                
+                if not result:
+                    print(f"❌ Token bulunamadı")
+                    return {"valid": False, "error": "Geçersiz veya süresi dolmuş token"}
+                
+                user_id, expires_at, used = result
+                
+                print(f"✅ Token bulundu - User ID: {user_id}, Used: {used}, Expires: {expires_at}")
+                
+                # Token kullanılmış mı?
+                if used:
+                    print(f"❌ Token zaten kullanılmış")
+                    return {"valid": False, "error": "Bu token zaten kullanılmış"}
+                
+                # Süre kontrolü - UTC ile karşılaştır
+                now_utc = datetime.utcnow()
+                
+                # expires_at datetime objesi ise direkt karşılaştır
+                if isinstance(expires_at, datetime):
+                    if now_utc > expires_at:
+                        print(f"❌ Token süresi dolmuş - Now: {now_utc}, Expires: {expires_at}")
+                        return {"valid": False, "error": "Token süresi dolmuş (30 dakika)"}
+                # String ise parse et
+                else:
+                    expires_at_dt = datetime.fromisoformat(str(expires_at).replace('Z', '+00:00'))
+                    # Timezone varsa kaldır
+                    if expires_at_dt.tzinfo is not None:
+                        expires_at_dt = expires_at_dt.replace(tzinfo=None)
+                    
+                    if now_utc > expires_at_dt:
+                        print(f"❌ Token süresi dolmuş - Now: {now_utc}, Expires: {expires_at_dt}")
+                        return {"valid": False, "error": "Token süresi dolmuş (30 dakika)"}
+                
+                print(f"✅ Token geçerli!")
+                return {"valid": True, "user_id": user_id}
+                
+        except Exception as e:
+            print(f"❌ Token doğrulama hatası: {e}")
+            import traceback
+            traceback.print_exc()
+            return {"valid": False, "error": "Token doğrulama hatası"}
 
     def reset_password(self, token: str, new_password: str) -> dict:
         """Şifreyi sıfırla"""
-        verify_result = self.verify_token(token)
-        
-        if not verify_result["valid"]:
-            return {"success": False, "error": verify_result["error"]}
-        
-        user_id = verify_result["user_id"]
-        token_hash = hashlib.sha256(token.encode()).hexdigest()
-        
-        # Şifreyi hashle
-        password_hash = hashlib.sha256(new_password.encode()).hexdigest()
-        
-        with get_connection() as conn:
-            # Şifreyi güncelle
-            conn.execute(
-                text("UPDATE users SET password_hash = :pwd WHERE id = :user_id"),
-                {"pwd": password_hash, "user_id": user_id}
-            )
+        try:
+            verify_result = self.verify_token(token)
             
-            # Token'ı kullanılmış olarak işaretle
-            conn.execute(
-                text("UPDATE password_reset_tokens SET used = TRUE WHERE token_hash = :token_hash"),
-                {"token_hash": token_hash}
-            )
+            if not verify_result["valid"]:
+                return {"success": False, "error": verify_result["error"]}
             
-            conn.commit()
-        
-        print(f"✅ Şifre sıfırlandı - User ID: {user_id}")
-        return {"success": True, "message": "Şifreniz başarıyla değiştirildi"}
+            user_id = verify_result["user_id"]
+            token_hash = hashlib.sha256(token.encode()).hexdigest()
+            
+            # Şifreyi hashle
+            password_hash = hashlib.sha256(new_password.encode()).hexdigest()
+            
+            with get_connection() as conn:
+                # Şifreyi güncelle
+                conn.execute(
+                    text("UPDATE users SET password_hash = :pwd WHERE id = :user_id"),
+                    {"pwd": password_hash, "user_id": user_id}
+                )
+                
+                # Token'ı kullanılmış olarak işaretle
+                conn.execute(
+                    text("UPDATE password_reset_tokens SET used = TRUE WHERE token_hash = :token_hash"),
+                    {"token_hash": token_hash}
+                )
+                
+                conn.commit()
+            
+            print(f"✅ Şifre sıfırlandı - User ID: {user_id}")
+            return {"success": True, "message": "Şifreniz başarıyla değiştirildi"}
+            
+        except Exception as e:
+            print(f"❌ Şifre sıfırlama hatası: {e}")
+            import traceback
+            traceback.print_exc()
+            return {"success": False, "error": "Şifre sıfırlama işlemi başarısız oldu"}
     
     def send_reset_email(self, user_email: str, reset_link: str) -> bool:
         """
