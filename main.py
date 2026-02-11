@@ -963,19 +963,131 @@ def payment_pending_page(request: Request, session_id: str = Cookie(None)):
 def admin_panel(request: Request, admin_password: str = None):
     if admin_password != ADMIN_PASSWORD:
         return HTMLResponse("""
-            <html>
-            <body style="font-family: Arial; background: #0f172a; color: #fff; padding: 40px; text-align: center;">
-                <h2>🔐 Admin Girişi</h2>
-                <form method="GET">
-                    <input type="password" name="admin_password" placeholder="Admin şifresi" 
-                           style="padding: 12px; border-radius: 8px; border: none; margin: 10px;">
-                    <button type="submit" style="padding: 12px 24px; background: #38bdf8; 
-                            color: #000; border: none; border-radius: 8px; cursor: pointer;">Giriş</button>
-                </form>
-            </body>
-            </html>
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>Admin Girişi - Ekinci Analiz</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            color: #e2e8f0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .login-container {
+            width: 100%;
+            max-width: 400px;
+            background: rgba(30, 41, 59, 0.8);
+            border: 1px solid #334155;
+            border-radius: 16px;
+            padding: 40px 30px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+        .login-header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        .login-header h1 {
+            color: #38bdf8;
+            font-size: 28px;
+            margin-bottom: 8px;
+        }
+        .login-header p {
+            color: #94a3b8;
+            font-size: 14px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            display: block;
+            color: #cbd5e1;
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 8px;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 14px 16px;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid #334155;
+            border-radius: 8px;
+            color: #e2e8f0;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+        .form-group input:focus {
+            outline: none;
+            border-color: #38bdf8;
+            background: rgba(15, 23, 42, 0.8);
+            box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.1);
+        }
+        .form-group input::placeholder {
+            color: #64748b;
+        }
+        .login-btn {
+            width: 100%;
+            padding: 14px;
+            background: #38bdf8;
+            color: #0f172a;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 10px;
+        }
+        .login-btn:hover {
+            background: #0ea5e9;
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(56, 189, 248, 0.2);
+        }
+        @media (max-width: 480px) {
+            .login-container {
+                padding: 30px 20px;
+            }
+            .login-header h1 {
+                font-size: 24px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-header">
+            <h1>🔒 Admin Girişi</h1>
+            <p>Ekinci Analiz Yönetim Paneli</p>
+        </div>
+        <form method="GET">
+            <div class="form-group">
+                <label for="admin_password">Admin Şifresi</label>
+                <input 
+                    type="password" 
+                    id="admin_password" 
+                    name="admin_password" 
+                    placeholder="Şifrenizi girin"
+                    required
+                    autocomplete="current-password"
+                    autofocus
+                >
+            </div>
+            <button type="submit" class="login-btn">Giriş Yap</button>
+        </form>
+    </div>
+</body>
+</html>
         """)
-    
+   
+     
     user_stats = user_manager.get_user_stats()
     payment_stats = payment_manager.get_payment_stats()
     
