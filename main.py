@@ -655,9 +655,39 @@ def coupons_page(request: Request, session_id: str = Cookie(None)):
 async def register_submit(
     request: Request,
     email: str = Form(...),
-    password: str = Form(...)
+    password: str = Form(...),
+    confirm_password: str = Form(...),
+    redeem_code: str = Form(None)
 ):
-    result = user_manager.create_user(email, password)
+    """
+    ✅ DÜZELTİLDİ: 
+    - confirm_password kontrolü eklendi
+    - redeem_code desteği eklendi
+    - register_user() fonksiyonu kullanılıyor (create_user değil)
+    - Redeem kod varsa direkt dashboard, yoksa payment
+    """
+    
+    # Validasyon
+    if not email or not password:
+        return templates.TemplateResponse(
+            "register.html",
+            {"request": request, "error": "E-posta ve şifre gerekli"}
+        )
+    
+    if password != confirm_password:
+        return templates.TemplateResponse(
+            "register.html",
+            {"request": request, "error": "Şifreler eşleşmiyor"}
+        )
+    
+    if len(password) < 6:
+        return templates.TemplateResponse(
+            "register.html",
+            {"request": request, "error": "Şifre en az 6 karakter olmalı"}
+        )
+    
+    # ✅ DÜZELTİLDİ: register_user() kullan (create_user değil!)
+    result = user_manager.register_user(email, password, redeem_code)
     
     if not result["success"]:
         return templates.TemplateResponse(
@@ -665,24 +695,30 @@ async def register_submit(
             {"request": request, "error": result["error"]}
         )
     
+    # ✅ Kayıt başarılı - otomatik login yap
     login_result = user_manager.login_user(email, password)
     
-    if login_result["success"]:
-        response = RedirectResponse(url="/dashboard", status_code=303)
-        # ✅ Kayıt olunca otomatik 30 gün hatırla
-        response.set_cookie(
-            key="session_id", 
-            value=login_result["session_id"], 
-            httponly=True,
-            max_age=30 * 24 * 60 * 60,  # 30 gün
-            samesite="lax"
+    if not login_result["success"]:
+        return templates.TemplateResponse(
+            "register.html",
+            {"request": request, "error": "Kayıt başarılı ama giriş yapılamadı"}
         )
-        return response
     
-    return templates.TemplateResponse(
-        "register.html",
-        {"request": request, "error": "Kayıt başarılı ama giriş yapılamadı"}
+    # ✅ Redeem kod kullanıldıysa dashboard, yoksa payment'a yönlendir
+    redirect_url = "/dashboard" if result.get("has_redeem") else "/payment"
+    
+    response = RedirectResponse(url=redirect_url, status_code=303)
+    
+    # ✅ Session cookie'sini set et (30 gün)
+    response.set_cookie(
+        key="session_id", 
+        value=login_result["session_id"], 
+        httponly=True,
+        max_age=30 * 24 * 60 * 60,  # 30 gün
+        samesite="lax"
     )
+    
+    return response
 
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
@@ -728,10 +764,17 @@ def logout(session_id: str = Cookie(None)):
 
 @app.get("/payment", response_class=HTMLResponse)
 def payment_page(request: Request, session_id: str = Cookie(None)):
+    """
+    ✅ DÜZELTİLDİ: Session kontrolü ve user bilgisi düzgün çekiliyor
+    """
     user = get_current_user(session_id)
     
     if not user:
         return RedirectResponse(url="/login", status_code=303)
+    
+    # Zaten premium ise dashboard'a yönlendir
+    if user.get("is_premium"):
+        return RedirectResponse(url="/dashboard", status_code=303)
     
     payment_ref = payment_manager.generate_payment_ref(user["user_id"])
     
