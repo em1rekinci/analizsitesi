@@ -387,11 +387,13 @@ def fh_probs(hs, as_):
 
 def generate_coupons(picks):
     """
-    ✅ GÜNCELLEME: Daha gerçekçi eşikler
+    ✅ YENİ MANTIK: %65 üstü tahminleri en yüksekten düşüğe sırala
     
-    1️⃣ GÜNÜN KOMBİNESİ: %75+ (En güvenilir 3 tahmin)
-    2️⃣ YÜKSEK ORAN: %68-75 (4 tahmin)
-    3️⃣ SÜPER ORAN: %62-68 (5 tahmin)
+    1️⃣ GÜNÜN KOMBİNESİ: En yüksek 3 tahmin (%65+)
+    2️⃣ YÜKSEK ORAN: Sonraki 4 tahmin (%65+)
+    3️⃣ SÜPER ORAN: Sonraki 5 tahmin (%65+)
+    
+    Tüm kuponlar %65+ tahminlerden oluşur ve yüksekten düşüğe sıralanır.
     """
     if not picks:
         return {
@@ -400,17 +402,18 @@ def generate_coupons(picks):
             "super_odds": []
         }
     
-    # En yüksek güvenilirlikten sırala
-    sorted_picks = sorted(picks, key=lambda x: x['value'], reverse=True)
+    # %65 ve üstü tahminleri filtrele ve en yüksekten düşüğe sırala
+    filtered_picks = [p for p in picks if p['value'] >= 65]
+    sorted_picks = sorted(filtered_picks, key=lambda x: x['value'], reverse=True)
     
-    # 1️⃣ GÜNÜN KOMBİNESİ: %75 ve üstü (en fazla 3 tane)
-    daily_coupon = [p for p in sorted_picks if p['value'] >= 75][:3]
+    # 1️⃣ GÜNÜN KOMBİNESİ: İlk 3 tahmin (en yüksek değerliler)
+    daily_coupon = sorted_picks[:3]
     
-    # 2️⃣ YÜKSEK ORAN: %68-75 arası (en fazla 4 tane)
-    high_odds_coupon = [p for p in sorted_picks if 68 <= p['value'] < 75][:4]
+    # 2️⃣ YÜKSEK ORAN: Sonraki 4 tahmin
+    high_odds_coupon = sorted_picks[3:7]
     
-    # 3️⃣ SÜPER ORAN: %62-68 arası (en fazla 5 tane)
-    super_odds_coupon = [p for p in sorted_picks if 62 <= p['value'] < 68][:5]
+    # 3️⃣ SÜPER ORAN: Sonraki 5 tahmin
+    super_odds_coupon = sorted_picks[7:12]
     
     return {
         "daily": daily_coupon,
