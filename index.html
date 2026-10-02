@@ -7,8 +7,8 @@
 <meta name="color-scheme" content="light dark">
 <link rel="manifest" href="manifest.json">
 <meta name="apple-mobile-web-app-title" content="Dükkan">
-<link rel="apple-touch-icon" id="touch" sizes="180x180" href="icon-light-180.png">
-<link rel="icon" id="fav" type="image/png" sizes="192x192" href="icon-light-192.png">
+<link rel="apple-touch-icon" id="touch" sizes="180x180" href="icon-light-180-v2.png">
+<link rel="icon" id="fav" type="image/png" sizes="192x192" href="icon-light-192-v2.png">
 <title>Dükkan</title>
 <script>
 (function(){var p='system';try{p=localStorage.getItem('dukkan-theme')||'system'}catch(e){}
@@ -86,7 +86,7 @@ button{font-family:inherit;color:inherit}
 </div>
 <div class="muted" style="margin:8px 4px 0">Sistem seçiliyse telefonunun açık/koyu ayarını takip eder.</div>
 <div class="setlabel">Uygulama</div>
-<div class="listrow"><div class="setrow"><img id="appicon" class="appicon" src="icon-light-180.png" alt=""><div><b>Dükkan</b><div class="muted">Ön-As Kuaför · v1.0.0</div></div></div></div>
+<div class="listrow"><div class="setrow"><img id="appicon" class="appicon" src="icon-light-180-v2.png" alt=""><div><b>Dükkan</b><div class="muted">Ön-As Kuaför · v1.0.0</div></div></div></div>
 </section>
 </main>
 <nav class="bottom">
@@ -107,9 +107,9 @@ function applyTheme(){
   const p=getPref(), dark=p==='dark'||(p==='system'&&mq.matches), t=dark?'dark':'light';
   document.documentElement.dataset.theme=t;
   document.querySelector('meta[name="theme-color"]').content=dark?'#07142b':'#111111';
-  document.getElementById('fav').href='icon-'+t+'-192.png';
-  document.getElementById('touch').href='icon-'+t+'-180.png';
-  document.getElementById('appicon').src='icon-'+t+'-180.png';
+  document.getElementById('fav').href='icon-'+t+'-192-v2.png';
+  document.getElementById('touch').href='icon-'+t+'-180-v2.png';
+  document.getElementById('appicon').src='icon-'+t+'-180-v2.png';
   document.querySelectorAll('[data-theme-pref]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.themePref===p)));
 }
 document.querySelectorAll('[data-theme-pref]').forEach(b=>b.onclick=()=>{try{localStorage.setItem(THEME_KEY,b.dataset.themePref)}catch(e){}applyTheme()});
