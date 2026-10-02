@@ -23,10 +23,9 @@ document.documentElement.dataset.theme=d?'dark':'light'})();
 button{font-family:inherit;color:inherit}
 .app{max-width:520px;margin:auto;min-height:100vh;padding-bottom:88px}.top{padding:22px 20px 12px;display:flex;justify-content:space-between;align-items:center}.brand{font-family:"Priestacy","Snell Roundhand","Segoe Script",cursive;font-size:36px;font-weight:400;letter-spacing:0;line-height:1;margin-bottom:14px}.sub{font-size:13px;color:var(--muted);margin-top:3px}.avatar{width:40px;height:40px;border-radius:50%;background:var(--ink);color:var(--on-ink);display:grid;place-items:center;font-weight:700}
 .content{padding:8px 16px}.hello{font-size:27px;font-weight:750;letter-spacing:-.7px;margin:12px 4px 3px}.date{color:var(--muted);font-size:14px;margin:0 4px 18px}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.stat{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px}.label{font-size:12px;color:var(--muted)}.value{font-size:23px;font-weight:750;margin-top:7px}.delta{font-size:11px;color:var(--green);margin-top:5px}
-.section{display:flex;justify-content:space-between;align-items:center;margin:24px 4px 11px}.section h2{font-size:17px;margin:0}.link{font-size:12px;color:var(--muted)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.stat{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px}.label{font-size:12px;color:var(--muted)}.value{font-size:23px;font-weight:750;margin-top:7px}.delta{font-size:11px;color:var(--green);margin-top:5px}.delta.mute{color:var(--muted)}.today{font-size:15px;font-weight:600;color:var(--muted)}
+.section{display:flex;justify-content:space-between;align-items:center;margin:24px 4px 11px}.section h2{font-size:17px;margin:0}.link{font-size:12px;color:var(--muted);border:0;background:none;padding:6px 0 6px 12px;cursor:pointer}
 .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:5px 0;overflow:hidden}.appointment{display:flex;gap:12px;padding:15px 15px;border-bottom:1px solid var(--line)}.appointment:last-child{border:0}.time{width:43px;font-size:12px;font-weight:650;padding-top:3px}.dot{width:9px;height:9px;border-radius:50%;background:var(--ink);margin-top:5px}.apptmain{flex:1}.name{font-weight:650;font-size:14px}.service{font-size:12px;color:var(--muted);margin-top:4px}.price{font-weight:650;font-size:13px}.badge{display:inline-block;margin-top:6px;padding:4px 7px;border-radius:8px;background:var(--chip);color:var(--chip-text);font-size:10px}.badge.green{background:var(--green-bg);color:var(--green-text)}
-.quick{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}.quick button{border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:15px;padding:14px 7px;font-size:12px;font-weight:600}.quick span{display:block;font-size:20px;margin-bottom:6px}
 .bottom{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:min(520px,100%);height:76px;background:var(--nav-bg);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border-top:1px solid var(--line);display:flex;justify-content:space-around;padding-top:9px;padding-bottom:env(safe-area-inset-bottom)}.nav{border:0;background:none;color:var(--nav-muted);font-size:10px;font-weight:600}.nav.active{color:var(--ink)}.nav i{font-style:normal;font-size:21px;display:block;margin-bottom:4px}
 .screen{display:none}.screen.active{display:block}
 .listrow{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:15px;margin-bottom:9px}.rowtop{display:flex;justify-content:space-between}.muted{color:var(--muted);font-size:12px;margin-top:4px}.pill{font-size:10px;background:var(--chip);color:var(--chip-text);padding:5px 8px;border-radius:8px}.calendar{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:15px}.days{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center}.day{padding:8px 2px;font-size:11px;color:var(--muted)}.day.sel{background:var(--ink);color:var(--on-ink);border-radius:10px}.slots{margin-top:13px}.slot{display:flex;gap:12px;padding:13px 4px;border-bottom:1px solid var(--line);font-size:12px}.slot b{width:42px}.fab{position:fixed;right:max(20px,calc((100% - 520px)/2 + 20px));bottom:95px;width:52px;height:52px;border:0;border-radius:18px;background:var(--ink);color:var(--on-ink);font-size:25px;box-shadow:0 10px 30px var(--shadow)}
@@ -37,24 +36,22 @@ button{font-family:inherit;color:inherit}
 </head>
 <body>
 <div class="app">
-<header class="top"><div><div class="brand">Dükkan</div><div class="sub">Ön-As Kuaför</div></div><div class="avatar">ÖA</div></header>
+<header class="top"><div><div class="brand">Dükkan</div><div class="sub">Hair Artist</div></div><div class="avatar">HA</div></header>
 <main class="content">
 <section id="home" class="screen active">
-<div class="hello">Günaydın, Öner 👋</div><div class="date">30 Eylül Salı · Bugünün özeti</div>
+<div class="hello">Günaydın, Emir 👋</div><div class="date">30 Eylül Salı · Bugünün özeti</div>
 <div class="grid">
 <div class="stat"><div class="label">Bugünkü ciro</div><div class="value">₺8.450</div><div class="delta">↑ %12 geçen haftaya göre</div></div>
 <div class="stat"><div class="label">Randevular</div><div class="value">18</div><div class="delta">3 bekliyor</div></div>
-<div class="stat"><div class="label">Müşteriler</div><div class="value">1.248</div></div>
-<div class="stat"><div class="label">Ort. işlem</div><div class="value">₺469</div></div>
+<div class="stat"><div class="label">Müşteriler</div><div class="value">1.248 <span class="today">(18)</span></div><div class="delta mute">(…) bugünkü müşteri</div></div>
+<div class="stat"><div class="label">Sıradaki randevu</div><div class="value">10:30</div><div class="delta mute">Ayşe Demir</div></div>
 </div>
-<div class="section"><h2>Bugünkü randevular</h2><span class="link">Tümünü gör</span></div>
+<div class="section"><h2>Bugünkü randevular</h2><button class="link" data-goto="appointments">Tümünü gör</button></div>
 <div class="card">
 <div class="appointment"><div class="time">09:30</div><div class="dot"></div><div class="apptmain"><div class="name">Ahmet Yılmaz</div><div class="service">Saç Kesimi · Öner</div><span class="badge green">Onaylı</span></div><div class="price">₺500</div></div>
 <div class="appointment"><div class="time">10:30</div><div class="dot"></div><div class="apptmain"><div class="name">Ayşe Demir</div><div class="service">Saç + Boya · Elif</div><span class="badge">Bekliyor</span></div><div class="price">₺1.500</div></div>
 <div class="appointment"><div class="time">12:00</div><div class="dot"></div><div class="apptmain"><div class="name">Mehmet Kaya</div><div class="service">Saç + Sakal · Öner</div><span class="badge green">Onaylı</span></div><div class="price">₺750</div></div>
 </div>
-<div class="section"><h2>Hızlı işlemler</h2></div>
-<div class="quick"><button onclick="alert('Yeni rezervasyon ekranı yakında')"><span>＋</span>Randevu</button><button><span>♙</span>Müşteri</button><button><span>₺</span>Ödeme</button></div>
 </section>
 
 <section id="calendar" class="screen">
@@ -86,7 +83,7 @@ button{font-family:inherit;color:inherit}
 </div>
 <div class="muted" style="margin:8px 4px 0">Sistem seçiliyse telefonunun açık/koyu ayarını takip eder.</div>
 <div class="setlabel">Uygulama</div>
-<div class="listrow"><div class="setrow"><img id="appicon" class="appicon" src="icon-light-180-v2.png" alt=""><div><b>Dükkan</b><div class="muted">Ön-As Kuaför · v1.0.0</div></div></div></div>
+<div class="listrow"><div class="setrow"><img id="appicon" class="appicon" src="icon-light-180-v2.png" alt=""><div><b>Dükkan</b><div class="muted">Hair Artist · v1.0.0</div></div></div></div>
 </section>
 </main>
 <nav class="bottom">
@@ -99,7 +96,9 @@ button{font-family:inherit;color:inherit}
 </div>
 <script>
 const navs=document.querySelectorAll('.nav'), screens=document.querySelectorAll('.screen');
-navs.forEach(n=>n.onclick=()=>{navs.forEach(x=>x.classList.remove('active'));n.classList.add('active');screens.forEach(s=>s.classList.toggle('active',s.id===n.dataset.target));window.scrollTo(0,0)});
+function go(t){navs.forEach(x=>x.classList.toggle('active',x.dataset.target===t));screens.forEach(s=>s.classList.toggle('active',s.id===t));window.scrollTo(0,0)}
+navs.forEach(n=>n.onclick=()=>go(n.dataset.target));
+document.querySelectorAll('[data-goto]').forEach(b=>b.onclick=()=>go(b.dataset.goto));
 
 const THEME_KEY='dukkan-theme', mq=matchMedia('(prefers-color-scheme: dark)');
 const getPref=()=>{try{return localStorage.getItem(THEME_KEY)||'system'}catch(e){return 'system'}};
