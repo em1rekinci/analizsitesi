@@ -4,25 +4,35 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#111111">
+<meta name="color-scheme" content="light dark">
 <link rel="manifest" href="manifest.json">
 <meta name="apple-mobile-web-app-title" content="Dükkan">
-<link rel="apple-touch-icon" sizes="180x180" href="icon-light-180.png">
-<link rel="icon" type="image/png" sizes="192x192" href="icon-light-192.png" media="(prefers-color-scheme: light)">
-<link rel="icon" type="image/png" sizes="192x192" href="icon-dark-192.png" media="(prefers-color-scheme: dark)">
+<link rel="apple-touch-icon" id="touch" sizes="180x180" href="icon-light-180.png">
+<link rel="icon" id="fav" type="image/png" sizes="192x192" href="icon-light-192.png">
 <title>Dükkan</title>
+<script>
+(function(){var p='system';try{p=localStorage.getItem('dukkan-theme')||'system'}catch(e){}
+var d=p==='dark'||(p==='system'&&matchMedia('(prefers-color-scheme: dark)').matches);
+document.documentElement.dataset.theme=d?'dark':'light'})();
+</script>
 <style>
 @font-face{font-family:"Priestacy";src:url("Priestacy.otf") format("opentype");font-weight:400;font-style:normal;font-display:swap}
-:root{--bg:#f5f5f7;--card:#fff;--text:#111;--muted:#777;--line:#e9e9ec;--accent:#111;--green:#22a06b;--orange:#f59e0b}
+:root{--bg:#f5f5f7;--card:#fff;--text:#111;--muted:#777;--line:#e9e9ec;--ink:#111;--on-ink:#fff;--chip:#f0f0f2;--chip-text:#555;--green:#22a06b;--green-bg:#e8f7ef;--green-text:#14734b;--nav-bg:rgba(255,255,255,.94);--nav-muted:#8a8a8f;--shadow:#0002;--seg-bg:#ececf0;color-scheme:light}
+:root[data-theme="dark"]{--bg:#07142b;--card:#0e2142;--text:#f2f4f8;--muted:#8fa0bd;--line:#1c3157;--ink:#f2f4f8;--on-ink:#07142b;--chip:#163058;--chip-text:#b5c3dc;--green:#3ec98a;--green-bg:#0f3a2f;--green-text:#6fe0ae;--nav-bg:rgba(7,20,43,.92);--nav-muted:#7586a6;--shadow:#0006;--seg-bg:#0a1a35;color-scheme:dark}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",sans-serif;color:var(--text)}
-.app{max-width:520px;margin:auto;min-height:100vh;padding-bottom:88px}.top{padding:22px 20px 12px;display:flex;justify-content:space-between;align-items:center}.brand{font-family:"Priestacy","Snell Roundhand","Segoe Script",cursive;font-size:36px;font-weight:400;letter-spacing:0;line-height:1;margin-bottom:14px}.sub{font-size:13px;color:var(--muted);margin-top:3px}.avatar{width:40px;height:40px;border-radius:50%;background:#111;color:#fff;display:grid;place-items:center;font-weight:700}
+button{font-family:inherit;color:inherit}
+.app{max-width:520px;margin:auto;min-height:100vh;padding-bottom:88px}.top{padding:22px 20px 12px;display:flex;justify-content:space-between;align-items:center}.brand{font-family:"Priestacy","Snell Roundhand","Segoe Script",cursive;font-size:36px;font-weight:400;letter-spacing:0;line-height:1;margin-bottom:14px}.sub{font-size:13px;color:var(--muted);margin-top:3px}.avatar{width:40px;height:40px;border-radius:50%;background:var(--ink);color:var(--on-ink);display:grid;place-items:center;font-weight:700}
 .content{padding:8px 16px}.hello{font-size:27px;font-weight:750;letter-spacing:-.7px;margin:12px 4px 3px}.date{color:var(--muted);font-size:14px;margin:0 4px 18px}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.stat{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px}.label{font-size:12px;color:var(--muted)}.value{font-size:23px;font-weight:750;margin-top:7px}.delta{font-size:11px;color:var(--green);margin-top:5px}
-.section{display:flex;justify-content:space-between;align-items:center;margin:24px 4px 11px}.section h2{font-size:17px;margin:0}.link{font-size:12px;color:#666}
-.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:5px 0;overflow:hidden}.appointment{display:flex;gap:12px;padding:15px 15px;border-bottom:1px solid var(--line)}.appointment:last-child{border:0}.time{width:43px;font-size:12px;font-weight:650;padding-top:3px}.dot{width:9px;height:9px;border-radius:50%;background:#111;margin-top:5px}.apptmain{flex:1}.name{font-weight:650;font-size:14px}.service{font-size:12px;color:var(--muted);margin-top:4px}.price{font-weight:650;font-size:13px}.badge{display:inline-block;margin-top:6px;padding:4px 7px;border-radius:8px;background:#f0f0f2;color:#555;font-size:10px}.badge.green{background:#e8f7ef;color:#14734b}
-.quick{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}.quick button{border:1px solid var(--line);background:#fff;border-radius:15px;padding:14px 7px;font-size:12px;font-weight:600}.quick span{display:block;font-size:20px;margin-bottom:6px}
-.bottom{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:min(520px,100%);height:76px;background:rgba(255,255,255,.94);backdrop-filter:blur(18px);border-top:1px solid var(--line);display:flex;justify-content:space-around;padding-top:9px;padding-bottom:env(safe-area-inset-bottom)}.nav{border:0;background:none;color:#8a8a8f;font-size:10px;font-weight:600}.nav.active{color:#111}.nav i{font-style:normal;font-size:21px;display:block;margin-bottom:4px}
+.section{display:flex;justify-content:space-between;align-items:center;margin:24px 4px 11px}.section h2{font-size:17px;margin:0}.link{font-size:12px;color:var(--muted)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:5px 0;overflow:hidden}.appointment{display:flex;gap:12px;padding:15px 15px;border-bottom:1px solid var(--line)}.appointment:last-child{border:0}.time{width:43px;font-size:12px;font-weight:650;padding-top:3px}.dot{width:9px;height:9px;border-radius:50%;background:var(--ink);margin-top:5px}.apptmain{flex:1}.name{font-weight:650;font-size:14px}.service{font-size:12px;color:var(--muted);margin-top:4px}.price{font-weight:650;font-size:13px}.badge{display:inline-block;margin-top:6px;padding:4px 7px;border-radius:8px;background:var(--chip);color:var(--chip-text);font-size:10px}.badge.green{background:var(--green-bg);color:var(--green-text)}
+.quick{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}.quick button{border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:15px;padding:14px 7px;font-size:12px;font-weight:600}.quick span{display:block;font-size:20px;margin-bottom:6px}
+.bottom{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:min(520px,100%);height:76px;background:var(--nav-bg);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border-top:1px solid var(--line);display:flex;justify-content:space-around;padding-top:9px;padding-bottom:env(safe-area-inset-bottom)}.nav{border:0;background:none;color:var(--nav-muted);font-size:10px;font-weight:600}.nav.active{color:var(--ink)}.nav i{font-style:normal;font-size:21px;display:block;margin-bottom:4px}
 .screen{display:none}.screen.active{display:block}
-.listrow{background:#fff;border:1px solid var(--line);border-radius:16px;padding:15px;margin-bottom:9px}.rowtop{display:flex;justify-content:space-between}.muted{color:var(--muted);font-size:12px;margin-top:4px}.pill{font-size:10px;background:#eee;padding:5px 8px;border-radius:8px}.calendar{background:#fff;border:1px solid var(--line);border-radius:18px;padding:15px}.days{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center}.day{padding:8px 2px;font-size:11px;color:#777}.day.sel{background:#111;color:#fff;border-radius:10px}.slots{margin-top:13px}.slot{display:flex;gap:12px;padding:13px 4px;border-bottom:1px solid var(--line);font-size:12px}.slot b{width:42px}.fab{position:fixed;right:max(20px,calc((100% - 520px)/2 + 20px));bottom:95px;width:52px;height:52px;border:0;border-radius:18px;background:#111;color:#fff;font-size:25px;box-shadow:0 10px 30px #0002}
+.listrow{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:15px;margin-bottom:9px}.rowtop{display:flex;justify-content:space-between}.muted{color:var(--muted);font-size:12px;margin-top:4px}.pill{font-size:10px;background:var(--chip);color:var(--chip-text);padding:5px 8px;border-radius:8px}.calendar{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:15px}.days{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center}.day{padding:8px 2px;font-size:11px;color:var(--muted)}.day.sel{background:var(--ink);color:var(--on-ink);border-radius:10px}.slots{margin-top:13px}.slot{display:flex;gap:12px;padding:13px 4px;border-bottom:1px solid var(--line);font-size:12px}.slot b{width:42px}.fab{position:fixed;right:max(20px,calc((100% - 520px)/2 + 20px));bottom:95px;width:52px;height:52px;border:0;border-radius:18px;background:var(--ink);color:var(--on-ink);font-size:25px;box-shadow:0 10px 30px var(--shadow)}
+.setlabel{font-size:12px;color:var(--muted);margin:22px 4px 8px}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;background:var(--seg-bg);border-radius:14px;padding:4px}.seg button{border:0;background:none;color:var(--muted);font-size:13px;font-weight:600;padding:10px 6px;border-radius:11px}.seg button[aria-pressed="true"]{background:var(--card);color:var(--text);box-shadow:0 1px 4px var(--shadow)}
+.setrow{display:flex;align-items:center;gap:14px}.appicon{width:56px;height:56px;border-radius:13px;border:1px solid var(--line)}
 </style>
 </head>
 <body>
@@ -67,17 +77,45 @@
 <div class="listrow"><div class="rowtop"><b>Ayşe Demir</b><span>₺8.900</span></div><div class="muted">8 ziyaret · Son ziyaret: 21 Eylül</div></div>
 <div class="listrow"><div class="rowtop"><b>Mehmet Kaya</b><span>₺2.750</span></div><div class="muted">5 ziyaret · Son ziyaret: bugün</div></div>
 </section>
+
+<section id="settings" class="screen">
+<div class="hello">Ayarlar</div><div class="date">Uygulama tercihlerin</div>
+<div class="setlabel">Görünüm</div>
+<div class="seg" role="group" aria-label="Görünüm">
+<button data-theme-pref="light">Açık</button><button data-theme-pref="dark">Koyu</button><button data-theme-pref="system">Sistem</button>
+</div>
+<div class="muted" style="margin:8px 4px 0">Sistem seçiliyse telefonunun açık/koyu ayarını takip eder.</div>
+<div class="setlabel">Uygulama</div>
+<div class="listrow"><div class="setrow"><img id="appicon" class="appicon" src="icon-light-180.png" alt=""><div><b>Dükkan</b><div class="muted">Ön-As Kuaför · v1.0.0</div></div></div></div>
+</section>
 </main>
 <nav class="bottom">
 <button class="nav active" data-target="home"><i>⌂</i>Ana Sayfa</button>
 <button class="nav" data-target="calendar"><i>□</i>Takvim</button>
 <button class="nav" data-target="appointments"><i>◷</i>Randevular</button>
 <button class="nav" data-target="customers"><i>♙</i>Müşteriler</button>
+<button class="nav" data-target="settings"><i>⚙&#xFE0E;</i>Ayarlar</button>
 </nav>
 </div>
 <script>
 const navs=document.querySelectorAll('.nav'), screens=document.querySelectorAll('.screen');
 navs.forEach(n=>n.onclick=()=>{navs.forEach(x=>x.classList.remove('active'));n.classList.add('active');screens.forEach(s=>s.classList.toggle('active',s.id===n.dataset.target));window.scrollTo(0,0)});
+
+const THEME_KEY='dukkan-theme', mq=matchMedia('(prefers-color-scheme: dark)');
+const getPref=()=>{try{return localStorage.getItem(THEME_KEY)||'system'}catch(e){return 'system'}};
+function applyTheme(){
+  const p=getPref(), dark=p==='dark'||(p==='system'&&mq.matches), t=dark?'dark':'light';
+  document.documentElement.dataset.theme=t;
+  document.querySelector('meta[name="theme-color"]').content=dark?'#07142b':'#111111';
+  document.getElementById('fav').href='icon-'+t+'-192.png';
+  document.getElementById('touch').href='icon-'+t+'-180.png';
+  document.getElementById('appicon').src='icon-'+t+'-180.png';
+  document.querySelectorAll('[data-theme-pref]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.themePref===p)));
+}
+document.querySelectorAll('[data-theme-pref]').forEach(b=>b.onclick=()=>{try{localStorage.setItem(THEME_KEY,b.dataset.themePref)}catch(e){}applyTheme()});
+mq.addEventListener('change',applyTheme);
+applyTheme();
+
 if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script>
 </body>
